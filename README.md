@@ -25,6 +25,14 @@ in the session you are talking to; Task Hub only composes the line for you.
   current composer; you press send.
 - **Auto refresh.** A 3-second poll you can switch off while editing.
 
+## Files
+
+Everything lives under `~/.task-hub/`:
+
+- `tasks.json` — the board itself: one entry per task with its sessions. The panel and any agent read and write this same file, so a terminal, a skill or another tool can work on it too.
+- `settings.json` — the progress root.
+- `<task id>/` — that task's progress folder (`README.md`, `SUMMARY.md`, `progress-*.md`).
+
 ## Install
 
 Settings → Extensions → paste the folder, ZIP or git URL → Add.
