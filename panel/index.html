@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<style>
+  :root {
+    --line: var(--border, rgba(128, 128, 128, 0.22));
+    --hint: var(--muted-foreground, rgba(128, 128, 128, 0.9));
+    --accent: var(--primary, #4b8bf5);
+    --accent-fg: var(--primary-foreground, #ffffff);
+    --soft: var(--muted, rgba(128, 128, 128, 0.12));
+  }
+  html, body { margin: 0; height: 100%; background: transparent; color: inherit; }
+  body {
+    font-family: var(--font-sans, system-ui, sans-serif);
+    font-size: 13px;
+    line-height: 1.45;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #app { display: flex; flex-direction: column; height: 100%; padding: 8px 10px; box-sizing: border-box; gap: 6px; }
+  .top { display: flex; align-items: center; gap: 6px; }
+  .label { font-weight: 600; }
+  #count { color: var(--hint); font-variant-numeric: tabular-nums; }
+  #status { flex: 1; color: var(--hint); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  input[type="search"], input[type="text"], textarea {
+    width: 100%; box-sizing: border-box; padding: 5px 8px; border-radius: 6px;
+    border: 1px solid var(--line); background: transparent; color: inherit;
+    font: inherit; outline: none; resize: vertical;
+  }
+  input:focus, textarea:focus { border-color: var(--accent); }
+  .sortbar { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; white-space: nowrap; }
+  .sortlabel { color: var(--hint); font-size: 11px; }
+  #sort { font: inherit; font-size: 12px; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: inherit; max-width: 130px; }
+  .split { flex: 1; display: flex; gap: 10px; min-height: 0; }
+  #list { flex: 0 0 34%; min-width: 150px; max-width: 260px; overflow: auto; }
+  #detail { flex: 1; overflow: auto; min-width: 0; }
+  .item {
+    width: 100%; box-sizing: border-box; display: flex; align-items: center; gap: 6px;
+    padding: 8px 10px; margin: 0 0 6px; border: 1px solid var(--line); border-radius: 8px;
+    background: transparent; color: inherit; font: inherit; text-align: start; cursor: pointer;
+  }
+  .item:hover { border-color: var(--accent); }
+  .item.on { border-color: var(--accent); background: var(--soft); }
+  .item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item-meta { color: var(--hint); font-size: 11px; min-width: 16px; text-align: center; border-radius: 999px; padding: 0 5px; background: var(--soft); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: 0 0 auto; }
+  .head { display: flex; align-items: center; gap: 6px; padding: 2px 0 6px; }
+  .head-name { font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tag { font-size: 11px; padding: 1px 6px; border-radius: 999px; background: var(--soft); color: var(--hint); flex: 0 0 auto; }
+  .tag.bad { color: var(--error-text, #c0392b); }
+  .row { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--line); }
+  .row.dragging { opacity: 0.45; }
+  .row.drop-target { box-shadow: inset 0 -2px 0 var(--accent); }
+  .row-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .row-name { display: flex; align-items: center; gap: 6px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .row-sub { color: var(--hint); font-size: 11px; font-family: var(--font-mono, ui-monospace, monospace); overflow: hidden; text-overflow: ellipsis; }
+  .row-actions { flex: 0 0 auto; display: flex; gap: 4px; }
+  .link { font: inherit; padding: 0; border: 0; background: none; color: inherit; cursor: pointer; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: start; }
+  .link:hover { color: var(--accent); text-decoration: underline; }
+  .link:disabled { cursor: default; color: var(--hint); }
+  .link:disabled:hover { color: var(--hint); text-decoration: none; }
+  .handle { flex: 0 0 auto; color: var(--hint); cursor: grab; user-select: none; letter-spacing: -2px; }
+  .handle:active { cursor: grabbing; }
+  .btn { font: inherit; font-size: 12px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; white-space: nowrap; }
+  .btn:hover { background: var(--soft); }
+  .btn.primary { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
+  .btn.danger { color: var(--error-text, #c0392b); border-color: var(--error-text, #c0392b); }
+  .btn.active { border-color: var(--accent); color: var(--accent); }
+  .state { flex: 0 0 auto; display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--hint); }
+  .state-icon { line-height: 1; }
+  .state[data-state="running"] { color: var(--accent); }
+  .state[data-state="waiting"] { color: var(--warning-text, #b26a00); }
+  .state[data-state="failed"] { color: var(--error-text, #c0392b); }
+  .progress { display: flex; align-items: center; gap: 6px; padding: 0 0 6px; border-bottom: 1px solid var(--line); }
+  .progress-label { color: var(--hint); font-size: 11px; }
+  .progress-path { flex: 1; min-width: 0; font-family: var(--font-mono, ui-monospace, monospace); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .files { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 0 8px; border-bottom: 1px solid var(--line); }
+  .file { font-size: 11px; color: var(--hint); background: var(--soft); border-radius: 6px; padding: 1px 6px; }
+  .file.missing { opacity: 0.55; }
+  .empty { color: var(--hint); padding: 12px 2px; }
+  .warn { color: var(--warning-text, #b26a00); padding: 6px 0; }
+  .error { color: var(--error-text, #c0392b); font-weight: 600; padding: 6px 0; }
+  .toast { position: fixed; left: 10px; right: 10px; bottom: 10px; padding: 6px 10px; border-radius: 6px; font-size: 12px; opacity: 0; transform: translateY(6px); transition: opacity .15s, transform .15s; pointer-events: none; background: var(--soft); }
+  .toast.show { opacity: 1; transform: none; }
+  .toast.success { color: var(--success-text, #1a7f37); }
+  .toast.error { color: var(--error-text, #c0392b); }
+  .sheet { position: fixed; inset: 0; display: none; background: rgba(0,0,0,.28); align-items: center; justify-content: center; padding: 12px; box-sizing: border-box; z-index: 10; }
+  .sheet.show { display: flex; }
+  .card { width: 100%; max-width: 480px; max-height: 100%; display: flex; flex-direction: column; gap: 8px; padding: 12px; box-sizing: border-box; border-radius: 10px; border: 1px solid var(--line); background: var(--background, #fff); color: inherit; box-shadow: 0 12px 30px rgba(0,0,0,.18); }
+  .card-head { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+  .card-head span { flex: 1; }
+  .card-foot { display: flex; justify-content: flex-end; gap: 6px; }
+  .hintline { color: var(--hint); font-size: 11px; }
+  #p-list { overflow: auto; max-height: 46vh; }
+  .pick { width: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 1px; padding: 6px 8px; margin-bottom: 2px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: inherit; font: inherit; text-align: start; cursor: pointer; }
+  .pick:hover { background: var(--soft); border-color: var(--line); }
+  .pick-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pick-sub { color: var(--hint); font-size: 11px; font-family: var(--font-mono, ui-monospace, monospace); }
+  @media (max-width: 420px) {
+    .split { flex-direction: column; }
+    #list { flex: 0 0 auto; max-height: 36%; max-width: none; min-width: 0; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="top">
+    <span class="label" id="app-title">Tasks</span>
+    <span id="count">0</span>
+    <span id="status"></span>
+    <button id="auto" class="btn" type="button">Auto</button>
+    <button id="new" class="btn" type="button">New</button>
+    <button id="refresh" class="btn" type="button">Refresh</button>
+  </div>
+  <input id="search" type="search" placeholder="Search tasks" autocomplete="off" />
+  <div class="sortbar">
+    <span class="sortlabel" id="sort-label">Sort</span>
+    <select id="sort">
+      <option value="manual">Manual</option>
+      <option value="name">Name</option>
+      <option value="members">Sessions</option>
+    </select>
+  </div>
+  <div class="split">
+    <div id="list"></div>
+    <div id="detail"></div>
+  </div>
+</div>
+
+<div id="form" class="sheet">
+  <div class="card">
+    <div class="card-head"><span id="f-heading">New task</span></div>
+    <input id="f-title" type="text" placeholder="Task name" />
+    <textarea id="f-goal" rows="2" placeholder="What it is"></textarea>
+    <textarea id="f-accept" rows="2" placeholder="What counts as done"></textarea>
+    <input id="f-dir" type="text" placeholder="~/.task-hub/<id>" />
+    <div class="hintline" id="f-dir-hint"></div>
+    <div class="card-foot">
+      <button id="f-cancel" class="btn" type="button">Cancel</button>
+      <button id="f-save" class="btn primary" type="button">Save</button>
+    </div>
+  </div>
+</div>
+
+<div id="picker" class="sheet">
+  <div class="card">
+    <div class="card-head"><span id="p-hint">Add session</span></div>
+    <input id="p-search" type="search" placeholder="Search sessions" autocomplete="off" />
+    <div id="p-list"></div>
+    <div class="card-foot"><button id="p-close" class="btn" type="button">Close</button></div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+<script src="main.js"></script>
+</body>
+</html>
