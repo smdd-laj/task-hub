@@ -498,7 +498,10 @@ async function renderDetail() {
     warn.textContent = t("noPeers")
     box.appendChild(warn)
   }
-  members.forEach((member, index) => box.appendChild(memberRow(task, member, index)))
+  const grid = document.createElement("div")
+  grid.className = "members"
+  for (const member of members) grid.appendChild(memberRow(task, member))
+  box.appendChild(grid)
 }
 
 async function renderFiles(task, box) {
