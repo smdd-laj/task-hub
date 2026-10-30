@@ -386,17 +386,7 @@ function memberRow(task, member, index) {
 
   const actions = document.createElement("span")
   actions.className = "row-actions"
-  actions.append(
-    button(t("compose"), "primary", async () => {
-      try {
-        await host.compose({ text: composeText(task, member), mode: "replace" })
-        toast(t("composed"), "success")
-      } catch (error) {
-        toast(String((error && error.code) || "ERR"), "error")
-      }
-    }),
-    button(t("remove"), "", () => void dropMember(task, member.sessionId))
-  )
+  actions.append(button(t("remove"), "", () => void dropMember(task, member.sessionId)))
 
   row.append(handle, info, state, actions)
   return row
@@ -580,16 +570,6 @@ async function addMember(task, row) {
 function defaultDir() {
   const root = (S.settings.progressRoot || DEFAULT_ROOT).replace(/\/+$/, "")
   return root + "/<id>"
-}
-
-function composeText(task, member) {
-  const suffix = member.sessionId.slice(-6)
-  if (S.loc === "zh") {
-    return "加进「" + (task.title || task.id) + "」，进度目录：" + task.progressDir +
-      "（你的文件：progress-" + suffix + ".md）。"
-  }
-  return "Add to \"" + (task.title || task.id) + "\"; progress folder: " + task.progressDir +
-    " (your file: progress-" + suffix + ".md)."
 }
 
 function openForm(mode, task) {
@@ -776,6 +756,12 @@ host.onReady((ctx) => {
   if (S.mounted) return
   S.mounted = true
   el("refresh").onclick = () => void loadAll()
+  el("search-toggle").onclick = () => {
+    const top = document.querySelector(".top")
+    if (!top) return
+    top.classList.toggle("search-open")
+    if (top.classList.contains("search-open")) el("search").focus()
+  }
   el("auto").onclick = () => toggleAuto()
   el("new").onclick = () => openForm("create", null)
   el("f-cancel").onclick = () => closeForm()

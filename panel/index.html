@@ -22,6 +22,7 @@
   #app { display: flex; flex-direction: column; height: 100%; padding: 8px 10px; box-sizing: border-box; gap: 6px; }
   .top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   #search { flex: 1 1 8rem; min-width: 6rem; }
+  #search-toggle { display: none; }
   .label { font-weight: 600; }
   #count { color: var(--hint); font-variant-numeric: tabular-nums; }
   #status { flex: 1; color: var(--hint); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -114,6 +115,10 @@
     .top { gap: 4px; flex-wrap: nowrap; }
     .top .sortlabel { display: none; }
     #count { display: none; }
+    #search-toggle { display: inline-flex; }
+    #search { display: none; }
+    .top.search-open { flex-wrap: wrap; }
+    .top.search-open #search { display: block; flex: 1 1 100%; }
     .split { flex-direction: column; gap: 4px; }
     #list {
       flex: 0 0 auto; width: 100%; max-width: none; min-width: 0;
@@ -125,7 +130,7 @@
     .head-name { display: none; }
     .head { padding: 0 0 3px; }
     .progress { padding-bottom: 3px; }
-    .files { padding: 3px 0 4px; }
+    .files { display: none; }
     .members { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 4px; padding-top: 4px; }
     .row { padding: 5px 7px; }
   }
@@ -137,6 +142,7 @@
     <span class="label" id="app-title">Tasks</span>
     <span id="count">0</span>
     <span id="status"></span>
+    <button id="search-toggle" class="btn" type="button" title="搜索">⌕</button>
     <input id="search" type="search" placeholder="Search tasks" autocomplete="off" />
     <span class="sortlabel" id="sort-label">Sort</span>
     <select id="sort">

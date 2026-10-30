@@ -21,8 +21,6 @@ in the session you are talking to; Task Hub only composes the line for you.
 - **Live status.** Running, waiting for you, idle or unreachable, from the same
   activity the sidebar shows.
 - **Jump to a session.** Click a session name to open that chat.
-- **Compose, do not send.** "To chat box" writes a three-line pointer into the
-  current composer; you press send.
 - **Auto refresh.** A 3-second poll you can switch off while editing.
 
 ## Files

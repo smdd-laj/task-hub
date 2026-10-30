@@ -2192,17 +2192,7 @@ ${GUEST_UI_LOOK_CSS}`;
     state.textContent = stateLabel(stateOf(member));
     const actions = document.createElement("span");
     actions.className = "row-actions";
-    actions.append(
-      button2(t("compose"), "primary", async () => {
-        try {
-          await host.compose({ text: composeText(task, member), mode: "replace" });
-          toast(t("composed"), "success");
-        } catch (error) {
-          toast(String(error && error.code || "ERR"), "error");
-        }
-      }),
-      button2(t("remove"), "", () => void dropMember(task, member.sessionId))
-    );
+    actions.append(button2(t("remove"), "", () => void dropMember(task, member.sessionId)));
     row.append(handle, info, state, actions);
     return row;
   }
@@ -2369,13 +2359,6 @@ ${GUEST_UI_LOOK_CSS}`;
     const root = (S.settings.progressRoot || DEFAULT_ROOT).replace(/\/+$/, "");
     return root + "/<id>";
   }
-  function composeText(task, member) {
-    const suffix = member.sessionId.slice(-6);
-    if (S.loc === "zh") {
-      return "\u52A0\u8FDB\u300C" + (task.title || task.id) + "\u300D\uFF0C\u8FDB\u5EA6\u76EE\u5F55\uFF1A" + task.progressDir + "\uFF08\u4F60\u7684\u6587\u4EF6\uFF1Aprogress-" + suffix + ".md\uFF09\u3002";
-    }
-    return 'Add to "' + (task.title || task.id) + '"; progress folder: ' + task.progressDir + " (your file: progress-" + suffix + ".md).";
-  }
   function openForm(mode, task) {
     S.formMode = mode;
     S.formId = task ? task.id : null;
@@ -2539,6 +2522,12 @@ ${GUEST_UI_LOOK_CSS}`;
     if (S.mounted) return;
     S.mounted = true;
     el2("refresh").onclick = () => void loadAll();
+    el2("search-toggle").onclick = () => {
+      const top = document.querySelector(".top");
+      if (!top) return;
+      top.classList.toggle("search-open");
+      if (top.classList.contains("search-open")) el2("search").focus();
+    };
     el2("auto").onclick = () => toggleAuto();
     el2("new").onclick = () => openForm("create", null);
     el2("f-cancel").onclick = () => closeForm();
