@@ -20,6 +20,7 @@ const DICT = {
     external: "external", unreadable: "External folder: the panel records and copies the path but does not read its files.",
     readFail: "Cannot read folder",
     running: "running", waiting: "waiting", idle: "idle", failed: "failed", unknown: "—",
+    coord: "coordinator", setCoord: "Make coordinator", clearCoord: "Unset coordinator",
     compose: "To chat box", composed: "Added to the chat box, send it yourself",
     remove: "Remove", open: "Open this session", gone: "Session not found",
     save: "Save", cancel: "Cancel", title: "Task name", goal: "What it is", accept: "Done when",
@@ -38,6 +39,7 @@ const DICT = {
     progress: "进度目录", copyPath: "复制路径", copyDone: "路径已复制",
     external: "外部", unreadable: "外部目录：面板只记录和复制路径，不读取里面的文件。", readFail: "读不到目录",
     running: "运行中", waiting: "等待", idle: "空闲", failed: "失败", unknown: "—",
+    coord: "协调", setCoord: "设为协调", clearCoord: "取消协调",
     compose: "放入聊天框", composed: "已放入聊天框，确认后自己发送",
     remove: "移除", open: "打开这个会话", gone: "会话不存在",
     save: "保存", cancel: "取消", title: "任务名", goal: "做什么", accept: "验收是什么",
@@ -358,6 +360,12 @@ function memberRow(task, member, index) {
     }
   }
   title.appendChild(nameBtn)
+  if (task.coordinator === member.sessionId) {
+    const tag = document.createElement("span")
+    tag.className = "tag coord"
+    tag.textContent = t("coord")
+    title.appendChild(tag)
+  }
   if (member.sessionId === S.me) {
     const tag = document.createElement("span")
     tag.className = "tag"
@@ -387,7 +395,11 @@ function memberRow(task, member, index) {
 
   const actions = document.createElement("span")
   actions.className = "row-actions"
-  actions.append(button(t("remove"), "", () => void dropMember(task, member.sessionId)))
+  const isCoord = task.coordinator === member.sessionId
+  actions.append(
+    button(isCoord ? "\u2605" : "\u2606", isCoord ? "primary" : "", () => void setCoordinator(task, isCoord ? null : member.sessionId)),
+    button(t("remove"), "", () => void dropMember(task, member.sessionId))
+  )
 
   row.append(handle, info, state, actions)
   return row
@@ -549,6 +561,13 @@ async function reorder(task, fromId, toId) {
 
 async function dropMember(task, sessionId) {
   task.members = (task.members || []).filter((m) => m.sessionId !== sessionId)
+  if (task.coordinator === sessionId) task.coordinator = null
+  await persist(task)
+  render()
+}
+
+async function setCoordinator(task, sessionId) {
+  task.coordinator = sessionId
   await persist(task)
   render()
 }

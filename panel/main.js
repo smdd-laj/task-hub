@@ -1796,6 +1796,9 @@ ${GUEST_UI_LOOK_CSS}`;
       idle: "idle",
       failed: "failed",
       unknown: "\u2014",
+      coord: "coordinator",
+      setCoord: "Make coordinator",
+      clearCoord: "Unset coordinator",
       compose: "To chat box",
       composed: "Added to the chat box, send it yourself",
       remove: "Remove",
@@ -1852,6 +1855,9 @@ ${GUEST_UI_LOOK_CSS}`;
       idle: "\u7A7A\u95F2",
       failed: "\u5931\u8D25",
       unknown: "\u2014",
+      coord: "\u534F\u8C03",
+      setCoord: "\u8BBE\u4E3A\u534F\u8C03",
+      clearCoord: "\u53D6\u6D88\u534F\u8C03",
       compose: "\u653E\u5165\u804A\u5929\u6846",
       composed: "\u5DF2\u653E\u5165\u804A\u5929\u6846\uFF0C\u786E\u8BA4\u540E\u81EA\u5DF1\u53D1\u9001",
       remove: "\u79FB\u9664",
@@ -2166,6 +2172,12 @@ ${GUEST_UI_LOOK_CSS}`;
       };
     }
     title.appendChild(nameBtn);
+    if (task.coordinator === member.sessionId) {
+      const tag = document.createElement("span");
+      tag.className = "tag coord";
+      tag.textContent = t("coord");
+      title.appendChild(tag);
+    }
     if (member.sessionId === S.me) {
       const tag = document.createElement("span");
       tag.className = "tag";
@@ -2192,7 +2204,11 @@ ${GUEST_UI_LOOK_CSS}`;
     state.textContent = stateLabel(stateOf(member));
     const actions = document.createElement("span");
     actions.className = "row-actions";
-    actions.append(button2(t("remove"), "", () => void dropMember(task, member.sessionId)));
+    const isCoord = task.coordinator === member.sessionId;
+    actions.append(
+      button2(isCoord ? "\u2605" : "\u2606", isCoord ? "primary" : "", () => void setCoordinator(task, isCoord ? null : member.sessionId)),
+      button2(t("remove"), "", () => void dropMember(task, member.sessionId))
+    );
     row.append(handle, info, state, actions);
     return row;
   }
@@ -2340,6 +2356,12 @@ ${GUEST_UI_LOOK_CSS}`;
   }
   async function dropMember(task, sessionId) {
     task.members = (task.members || []).filter((m) => m.sessionId !== sessionId);
+    if (task.coordinator === sessionId) task.coordinator = null;
+    await persist(task);
+    render();
+  }
+  async function setCoordinator(task, sessionId) {
+    task.coordinator = sessionId;
     await persist(task);
     render();
   }
