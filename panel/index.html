@@ -20,7 +20,8 @@
     overflow: hidden;
   }
   #app { display: flex; flex-direction: column; height: 100%; padding: 8px 10px; box-sizing: border-box; gap: 6px; }
-  .top { display: flex; align-items: center; gap: 6px; }
+  .top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  #search { flex: 1 1 8rem; min-width: 6rem; }
   .label { font-weight: 600; }
   #count { color: var(--hint); font-variant-numeric: tabular-nums; }
   #status { flex: 1; color: var(--hint); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -110,16 +111,21 @@
   /* Docked short and wide (e.g. bottom panel): task strip on top, member cards below. */
   @media (max-height: 430px) {
     #app { padding: 4px 8px; gap: 4px; }
+    .top { gap: 4px; flex-wrap: nowrap; }
+    .top .sortlabel { display: none; }
+    #count { display: none; }
     .split { flex-direction: column; gap: 4px; }
     #list {
       flex: 0 0 auto; width: 100%; max-width: none; min-width: 0;
       display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; padding-bottom: 2px;
     }
     .item { width: auto; flex: 0 0 auto; margin: 0; padding: 5px 8px; }
-    .item-name { max-width: 12rem; }
-    .head { padding: 0 0 4px; }
+    .item-name { max-width: 14rem; }
+    #detail { flex: 1 1 auto; min-height: 0; overflow: auto; }
+    .head-name { display: none; }
+    .head { padding: 0 0 3px; }
     .progress { padding-bottom: 3px; }
-    .files { padding: 3px 0 5px; }
+    .files { padding: 3px 0 4px; }
     .members { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 4px; padding-top: 4px; }
     .row { padding: 5px 7px; }
   }
@@ -131,18 +137,16 @@
     <span class="label" id="app-title">Tasks</span>
     <span id="count">0</span>
     <span id="status"></span>
-    <button id="auto" class="btn" type="button">Auto</button>
-    <button id="new" class="btn" type="button">New</button>
-    <button id="refresh" class="btn" type="button">Refresh</button>
-  </div>
-  <input id="search" type="search" placeholder="Search tasks" autocomplete="off" />
-  <div class="sortbar">
+    <input id="search" type="search" placeholder="Search tasks" autocomplete="off" />
     <span class="sortlabel" id="sort-label">Sort</span>
     <select id="sort">
       <option value="manual">Manual</option>
       <option value="name">Name</option>
       <option value="members">Sessions</option>
     </select>
+    <button id="auto" class="btn" type="button">Auto</button>
+    <button id="new" class="btn" type="button">New</button>
+    <button id="refresh" class="btn" type="button">Refresh</button>
   </div>
   <div class="split">
     <div id="list"></div>
