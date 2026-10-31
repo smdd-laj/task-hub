@@ -1898,6 +1898,7 @@ ${GUEST_UI_LOOK_CSS}`;
     meTitle: "",
     live: /* @__PURE__ */ new Map(),
     busy: /* @__PURE__ */ new Set(),
+    subscribed: /* @__PURE__ */ new Set(),
     loc: "en",
     auto: 0,
     mounted: false,
@@ -1999,6 +2000,56 @@ ${GUEST_UI_LOOK_CSS}`;
       });
     }
   }
+  function recomputeBusy() {
+    const busy = /* @__PURE__ */ new Set();
+    for (const [id, info] of S.live) {
+      if (info.activity !== "running" && info.activity !== "retrying") continue;
+      let cursor = info.parentId;
+      let guard = 0;
+      while (cursor && S.live.has(cursor) && guard < 20) {
+        busy.add(cursor);
+        cursor = S.live.get(cursor).parentId;
+        guard += 1;
+      }
+    }
+    S.busy = busy;
+  }
+  function mergeSessions(sessions, projectDirectory) {
+    for (const session of sessions) {
+      S.live.set(session.id, {
+        activity: session.activity || "unknown",
+        title: session.title || "",
+        directory: session.directory || projectDirectory || "",
+        parentId: session.parentId || null
+      });
+    }
+    recomputeBusy();
+  }
+  var repaintTimer = 0;
+  function scheduleRepaint() {
+    if (repaintTimer) return;
+    repaintTimer = setTimeout(() => {
+      repaintTimer = 0;
+      render();
+    }, 120);
+  }
+  async function subscribeLive() {
+    const snapshot = await host.listProjects().catch(() => null);
+    const projects = snapshot && Array.isArray(snapshot.projects) ? snapshot.projects : [];
+    for (const project of projects) {
+      if (S.subscribed.has(project.id)) continue;
+      S.subscribed.add(project.id);
+      try {
+        await host.onSessions(project.id, (snap) => {
+          if (!snap || !Array.isArray(snap.sessions)) return;
+          mergeSessions(snap.sessions, project.directory);
+          scheduleRepaint();
+        });
+      } catch {
+        S.subscribed.delete(project.id);
+      }
+    }
+  }
   async function collectLive() {
     const map = /* @__PURE__ */ new Map();
     const snapshot = await host.listProjects().catch(() => null);
@@ -2015,18 +2066,7 @@ ${GUEST_UI_LOOK_CSS}`;
         });
       }
     }
-    const busy = /* @__PURE__ */ new Set();
-    for (const [id, info] of map) {
-      if (info.activity !== "running" && info.activity !== "retrying") continue;
-      let cursor = info.parentId;
-      let guard = 0;
-      while (cursor && map.has(cursor) && guard < 20) {
-        busy.add(cursor);
-        cursor = map.get(cursor).parentId;
-        guard += 1;
-      }
-    }
-    return { map, busy };
+    return map;
   }
   function liveOf(member) {
     return S.live.get(member.sessionId) || null;
@@ -2056,9 +2096,9 @@ ${GUEST_UI_LOOK_CSS}`;
       const list = await readTasks();
       S.ids = list.map((task) => task.id);
       S.tasks = new Map(list.map((task) => [task.id, task]));
-      const live = await collectLive();
-      S.live = live.map;
-      S.busy = live.busy;
+      S.live = await collectLive();
+      recomputeBusy();
+      void subscribeLive();
       el2("status").textContent = "";
       render();
     } catch (error) {
