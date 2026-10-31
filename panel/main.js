@@ -1792,6 +1792,7 @@ ${GUEST_UI_LOOK_CSS}`;
       unreadable: "External folder: the panel records and copies the path but does not read its files.",
       readFail: "Cannot read folder",
       running: "running",
+      runningChild: "subagent running",
       waiting: "waiting",
       idle: "idle",
       failed: "failed",
@@ -1851,6 +1852,7 @@ ${GUEST_UI_LOOK_CSS}`;
       unreadable: "\u5916\u90E8\u76EE\u5F55\uFF1A\u9762\u677F\u53EA\u8BB0\u5F55\u548C\u590D\u5236\u8DEF\u5F84\uFF0C\u4E0D\u8BFB\u53D6\u91CC\u9762\u7684\u6587\u4EF6\u3002",
       readFail: "\u8BFB\u4E0D\u5230\u76EE\u5F55",
       running: "\u8FD0\u884C\u4E2D",
+      runningChild: "\u5B50\u4EE3\u7406\u8FD0\u884C\u4E2D",
       waiting: "\u7B49\u5F85",
       idle: "\u7A7A\u95F2",
       failed: "\u5931\u8D25",
@@ -1895,6 +1897,7 @@ ${GUEST_UI_LOOK_CSS}`;
     me: null,
     meTitle: "",
     live: /* @__PURE__ */ new Map(),
+    busy: /* @__PURE__ */ new Set(),
     loc: "en",
     auto: 0,
     mounted: false,
@@ -2007,11 +2010,23 @@ ${GUEST_UI_LOOK_CSS}`;
         map.set(session.id, {
           activity: session.activity || "unknown",
           title: session.title || "",
-          directory: session.directory || project.directory || ""
+          directory: session.directory || project.directory || "",
+          parentId: session.parentId || null
         });
       }
     }
-    return map;
+    const busy = /* @__PURE__ */ new Set();
+    for (const [id, info] of map) {
+      if (info.activity !== "running" && info.activity !== "retrying") continue;
+      let cursor = info.parentId;
+      let guard = 0;
+      while (cursor && map.has(cursor) && guard < 20) {
+        busy.add(cursor);
+        cursor = map.get(cursor).parentId;
+        guard += 1;
+      }
+    }
+    return { map, busy };
   }
   function liveOf(member) {
     return S.live.get(member.sessionId) || null;
@@ -2021,11 +2036,15 @@ ${GUEST_UI_LOOK_CSS}`;
     if (!live) return "unknown";
     if (live.activity === "running" || live.activity === "retrying") return "running";
     if (live.activity === "waiting-permission" || live.activity === "waiting-question") return "waiting";
-    if (live.activity === "idle") return "idle";
+    if (live.activity === "idle") {
+      if (S.busy.has(member.sessionId)) return "running-child";
+      return "idle";
+    }
     return "unknown";
   }
   function stateLabel(state) {
     if (state === "running") return "\u25CC " + t("running");
+    if (state === "running-child") return "\u25CC " + t("runningChild");
     if (state === "waiting") return "\u25D4 " + t("waiting");
     if (state === "failed") return "\u2715 " + t("failed");
     if (state === "idle") return "\xB7 " + t("idle");
@@ -2037,7 +2056,9 @@ ${GUEST_UI_LOOK_CSS}`;
       const list = await readTasks();
       S.ids = list.map((task) => task.id);
       S.tasks = new Map(list.map((task) => [task.id, task]));
-      S.live = await collectLive();
+      const live = await collectLive();
+      S.live = live.map;
+      S.busy = live.busy;
       el2("status").textContent = "";
       render();
     } catch (error) {

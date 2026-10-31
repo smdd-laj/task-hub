@@ -19,7 +19,7 @@ const DICT = {
     progress: "Progress folder", copyPath: "Copy path", copyDone: "Path copied",
     external: "external", unreadable: "External folder: the panel records and copies the path but does not read its files.",
     readFail: "Cannot read folder",
-    running: "running", waiting: "waiting", idle: "idle", failed: "failed", unknown: "—",
+    running: "running", runningChild: "subagent running", waiting: "waiting", idle: "idle", failed: "failed", unknown: "—",
     coord: "coordinator", setCoord: "Make coordinator", clearCoord: "Unset coordinator",
     compose: "To chat box", composed: "Added to the chat box, send it yourself",
     remove: "Remove", open: "Open this session", gone: "Session not found",
@@ -38,7 +38,7 @@ const DICT = {
     you: "你在里面", edit: "编辑", addSession: "加会话", delete: "删除", confirm: "再点删除",
     progress: "进度目录", copyPath: "复制路径", copyDone: "路径已复制",
     external: "外部", unreadable: "外部目录：面板只记录和复制路径，不读取里面的文件。", readFail: "读不到目录",
-    running: "运行中", waiting: "等待", idle: "空闲", failed: "失败", unknown: "—",
+    running: "运行中", runningChild: "子代理运行中", waiting: "等待", idle: "空闲", failed: "失败", unknown: "—",
     coord: "协调", setCoord: "设为协调", clearCoord: "取消协调",
     compose: "放入聊天框", composed: "已放入聊天框，确认后自己发送",
     remove: "移除", open: "打开这个会话", gone: "会话不存在",
@@ -55,7 +55,7 @@ const DICT = {
 const S = {
   ids: [], tasks: new Map(), settings: { progressRoot: DEFAULT_ROOT },
   selected: null, query: "", sort: "manual", me: null, meTitle: "",
-  live: new Map(), loc: "en", auto: 0, mounted: false,
+  live: new Map(), busy: new Set(), loc: "en", auto: 0, mounted: false,
   formMode: "create", formId: null, pickQ: "", pickRows: [], pickProjects: 0,
   deleting: null, deleteTimer: 0, dragId: null
 }
@@ -177,11 +177,24 @@ async function collectLive() {
       map.set(session.id, {
         activity: session.activity || "unknown",
         title: session.title || "",
-        directory: session.directory || project.directory || ""
+        directory: session.directory || project.directory || "",
+        parentId: session.parentId || null
       })
     }
   }
-  return map
+  // 子代理在跑时父会话自己往往是 idle；把运行中的子会话往上冒泡，父行才不会显示空闲。
+  const busy = new Set()
+  for (const [id, info] of map) {
+    if (info.activity !== "running" && info.activity !== "retrying") continue
+    let cursor = info.parentId
+    let guard = 0
+    while (cursor && map.has(cursor) && guard < 20) {
+      busy.add(cursor)
+      cursor = map.get(cursor).parentId
+      guard += 1
+    }
+  }
+  return { map, busy }
 }
 
 function liveOf(member) {
@@ -193,12 +206,17 @@ function stateOf(member) {
   if (!live) return "unknown"
   if (live.activity === "running" || live.activity === "retrying") return "running"
   if (live.activity === "waiting-permission" || live.activity === "waiting-question") return "waiting"
-  if (live.activity === "idle") return "idle"
+  if (live.activity === "idle") {
+    // 自己空闲、但子代理还在跑：跟左栏一样算“在动”。
+    if (S.busy.has(member.sessionId)) return "running-child"
+    return "idle"
+  }
   return "unknown"
 }
 
 function stateLabel(state) {
   if (state === "running") return "\u25cc " + t("running")
+  if (state === "running-child") return "\u25cc " + t("runningChild")
   if (state === "waiting") return "\u25d4 " + t("waiting")
   if (state === "failed") return "\u2715 " + t("failed")
   if (state === "idle") return "\u00b7 " + t("idle")
@@ -213,7 +231,9 @@ async function loadAll() {
     const list = await readTasks()
     S.ids = list.map((task) => task.id)
     S.tasks = new Map(list.map((task) => [task.id, task]))
-    S.live = await collectLive()
+    const live = await collectLive()
+    S.live = live.map
+    S.busy = live.busy
     el("status").textContent = ""
     render()
   } catch (error) {
