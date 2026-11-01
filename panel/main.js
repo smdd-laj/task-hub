@@ -2119,6 +2119,21 @@ ${GUEST_UI_LOOK_CSS}`;
     if (state === "idle") return "\xB7 " + t("idle");
     return "\xB7 " + t("unknown");
   }
+  async function serviceStates(ids) {
+    if (!ids.length || typeof host.serviceRequest !== "function") return null;
+    try {
+      const res = await host.serviceRequest({
+        method: "GET",
+        path: "/states",
+        query: { ids: ids.join(",") }
+      });
+      const text = typeof res?.body === "string" ? res.body : null;
+      if (!text) return null;
+      return JSON.parse(text);
+    } catch {
+      return null;
+    }
+  }
   async function loadAll() {
     try {
       S.settings = await readSettings();
@@ -2128,6 +2143,18 @@ ${GUEST_UI_LOOK_CSS}`;
       S.live = await collectLive();
       recomputeBusy();
       void subscribeLive();
+      const wanted = /* @__PURE__ */ new Set();
+      for (const task of S.tasks.values()) {
+        for (const member of task.members || []) wanted.add(member.sessionId);
+      }
+      const over = await serviceStates([...wanted]);
+      if (over) {
+        for (const [id, state] of Object.entries(over)) {
+          const current = S.live.get(id) || { activity: "unknown", title: "", directory: "", parentId: null };
+          current.activity = state && state.running ? "running" : "idle";
+          S.live.set(id, current);
+        }
+      }
       el2("status").textContent = "";
       render();
     } catch (error) {

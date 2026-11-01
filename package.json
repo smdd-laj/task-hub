@@ -1,6 +1,6 @@
 {
   "name": "task-hub",
-  "version": "1.3.3",
+  "version": "1.4.0",
   "private": true,
   "license": "MIT",
   "description": "One task, many agent sessions, one shared progress folder.",
@@ -21,7 +21,16 @@
       ],
       "filesystem": [
         "~/.task-hub/**"
-      ]
+      ],
+      "service": {
+        "entry": "service/main.js",
+        "runtime": "host",
+        "permissions": {
+          "exec": [
+            "opencode"
+          ]
+        }
+      }
     }
   }
 }
