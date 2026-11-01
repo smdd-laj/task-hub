@@ -19,7 +19,8 @@ const DICT = {
     progress: "Progress folder", copyPath: "Copy path", copyDone: "Path copied",
     external: "external", unreadable: "External folder: the panel records and copies the path but does not read its files.",
     readFail: "Cannot read folder",
-    running: "running", runningChild: "subagent running", waiting: "waiting", idle: "idle", failed: "failed", unknown: "—",
+    running: "running", runningChild: "subagent", waiting: "waiting", idle: "idle", failed: "failed", unknown: "—",
+    lastTurn: "last", done: "done",
     coord: "coordinator", setCoord: "Make coordinator", clearCoord: "Unset coordinator",
     compose: "To chat box", composed: "Added to the chat box, send it yourself",
     remove: "Remove", open: "Open this session", gone: "Session not found",
@@ -38,7 +39,8 @@ const DICT = {
     you: "你在里面", edit: "编辑", addSession: "加会话", delete: "删除", confirm: "再点删除",
     progress: "进度目录", copyPath: "复制路径", copyDone: "路径已复制",
     external: "外部", unreadable: "外部目录：面板只记录和复制路径，不读取里面的文件。", readFail: "读不到目录",
-    running: "运行中", runningChild: "子代理运行中", waiting: "等待", idle: "空闲", failed: "失败", unknown: "—",
+    running: "运行中", runningChild: "子代理", waiting: "等待", idle: "空闲", failed: "失败", unknown: "—",
+    lastTurn: "上轮", done: "完成",
     coord: "协调", setCoord: "设为协调", clearCoord: "取消协调",
     compose: "放入聊天框", composed: "已放入聊天框，确认后自己发送",
     remove: "移除", open: "打开这个会话", gone: "会话不存在",
@@ -55,7 +57,7 @@ const DICT = {
 const S = {
   ids: [], tasks: new Map(), settings: { progressRoot: DEFAULT_ROOT },
   selected: null, query: "", sort: "manual", me: null, meTitle: "",
-  live: new Map(), busy: new Set(), subscribed: new Set(), since: new Map(), stateNodes: [], ticker: 0, loc: "en", auto: 0, mounted: false,
+  live: new Map(), busy: new Set(), service: new Map(), subscribed: new Set(), since: new Map(), stateNodes: [], ticker: 0, loc: "en", auto: 0, mounted: false,
   formMode: "create", formId: null, pickQ: "", pickRows: [], pickProjects: 0,
   deleting: null, deleteTimer: 0, dragId: null
 }
@@ -72,13 +74,7 @@ function fmtElapsed(ms) {
 
 /* 运行中的会话按秒跳动：宿主只给 activity，不给起点，所以从面板第一次看到 running 开始计时。 */
 function tickStates() {
-  const now = Date.now()
-  for (const item of S.stateNodes) {
-    const state = stateOf(item.member)
-    const elapsed = elapsedOf(item.member, state)
-    item.el.dataset.state = state
-    item.el.textContent = stateLabel(state, elapsed)
-  }
+  for (const item of S.stateNodes) renderState(item.el, item.member)
 }
 
 /* ---------------- data files ---------------- */
@@ -263,16 +259,62 @@ function liveOf(member) {
 }
 
 function stateOf(member) {
+  const svc = S.service.get(member.sessionId)
+  if (svc) {
+    if (svc.running) return "running"
+    if (svc.lastMs) return "done"
+    return "idle"
+  }
   const live = liveOf(member)
   if (!live) return "unknown"
   if (live.activity === "running" || live.activity === "retrying") return "running"
   if (live.activity === "waiting-permission" || live.activity === "waiting-question") return "waiting"
   if (live.activity === "idle") {
-    // 自己空闲、但子代理还在跑：跟左栏一样算“在动”。
     if (S.busy.has(member.sessionId)) return "running-child"
     return "idle"
   }
   return "unknown"
+}
+
+function lastMsOf(member) {
+  const svc = S.service.get(member.sessionId)
+  if (svc && svc.lastMs) return svc.lastMs
+  return 0
+}
+
+const STATE_ICON = { done: "\u2713", failed: "\u2715", waiting: "\u25d4", idle: "\u00b7", unknown: "\u2014" }
+
+function renderState(el, member) {
+  const state = stateOf(member)
+  const elapsed = elapsedOf(member, state)
+  el.dataset.state = state
+  el.replaceChildren()
+
+  const icon = document.createElement("span")
+  icon.className = "state-icon"
+  if (state === "running" || state === "running-child") {
+    const spin = document.createElement("span")
+    spin.className = "spin"
+    icon.appendChild(spin)
+  } else {
+    icon.textContent = STATE_ICON[state] || STATE_ICON.unknown
+  }
+
+  const text = document.createElement("span")
+  text.className = "state-time"
+  if (state === "running" || state === "running-child") {
+    text.textContent = elapsed > 0 ? fmtElapsed(elapsed) : ""
+  } else if (state === "done") {
+    const ms = lastMsOf(member)
+    text.textContent = ms ? t("lastTurn") + " " + fmtElapsed(ms) : t("done")
+  } else if (state === "idle") {
+    text.textContent = t("idle")
+  } else if (state === "waiting") {
+    text.textContent = t("waiting")
+  } else {
+    text.textContent = ""
+  }
+  el.append(icon, text)
 }
 
 function elapsedOf(member, state) {
@@ -283,16 +325,6 @@ function elapsedOf(member, state) {
   }
   if (!S.since.has(member.sessionId)) S.since.set(member.sessionId, Date.now())
   return Date.now() - S.since.get(member.sessionId)
-}
-
-function stateLabel(state, elapsed) {
-  const suffix = elapsed > 0 ? " \u00b7 " + fmtElapsed(elapsed) : ""
-  if (state === "running") return "\u25cc " + t("running") + suffix
-  if (state === "running-child") return "\u25cc " + t("runningChild") + suffix
-  if (state === "waiting") return "\u25d4 " + t("waiting")
-  if (state === "failed") return "\u2715 " + t("failed")
-  if (state === "idle") return "\u00b7 " + t("idle")
-  return "\u00b7 " + t("unknown")
 }
 
 /* ---------------- data ---------------- */
@@ -329,8 +361,10 @@ async function loadAll() {
       for (const member of task.members || []) wanted.add(member.sessionId)
     }
     const over = await serviceStates([...wanted])
+    S.service = new Map()
     if (over) {
       for (const [id, state] of Object.entries(over)) {
+        S.service.set(id, { running: Boolean(state && state.running), lastMs: Number(state && state.lastMs) || 0 })
         const current = S.live.get(id) || { activity: "unknown", title: "", directory: "", parentId: null }
         current.activity = state && state.running ? "running" : "idle"
         S.live.set(id, current)
@@ -512,9 +546,7 @@ function memberRow(task, member, index) {
 
   const state = document.createElement("span")
   state.className = "state"
-  const stateValue = stateOf(member)
-  state.dataset.state = stateValue
-  state.textContent = stateLabel(stateValue, elapsedOf(member, stateValue))
+  renderState(state, member)
   S.stateNodes.push({ el: state, member })
 
   const actions = document.createElement("span")

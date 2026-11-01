@@ -1792,11 +1792,13 @@ ${GUEST_UI_LOOK_CSS}`;
       unreadable: "External folder: the panel records and copies the path but does not read its files.",
       readFail: "Cannot read folder",
       running: "running",
-      runningChild: "subagent running",
+      runningChild: "subagent",
       waiting: "waiting",
       idle: "idle",
       failed: "failed",
       unknown: "\u2014",
+      lastTurn: "last",
+      done: "done",
       coord: "coordinator",
       setCoord: "Make coordinator",
       clearCoord: "Unset coordinator",
@@ -1852,11 +1854,13 @@ ${GUEST_UI_LOOK_CSS}`;
       unreadable: "\u5916\u90E8\u76EE\u5F55\uFF1A\u9762\u677F\u53EA\u8BB0\u5F55\u548C\u590D\u5236\u8DEF\u5F84\uFF0C\u4E0D\u8BFB\u53D6\u91CC\u9762\u7684\u6587\u4EF6\u3002",
       readFail: "\u8BFB\u4E0D\u5230\u76EE\u5F55",
       running: "\u8FD0\u884C\u4E2D",
-      runningChild: "\u5B50\u4EE3\u7406\u8FD0\u884C\u4E2D",
+      runningChild: "\u5B50\u4EE3\u7406",
       waiting: "\u7B49\u5F85",
       idle: "\u7A7A\u95F2",
       failed: "\u5931\u8D25",
       unknown: "\u2014",
+      lastTurn: "\u4E0A\u8F6E",
+      done: "\u5B8C\u6210",
       coord: "\u534F\u8C03",
       setCoord: "\u8BBE\u4E3A\u534F\u8C03",
       clearCoord: "\u53D6\u6D88\u534F\u8C03",
@@ -1898,6 +1902,7 @@ ${GUEST_UI_LOOK_CSS}`;
     meTitle: "",
     live: /* @__PURE__ */ new Map(),
     busy: /* @__PURE__ */ new Set(),
+    service: /* @__PURE__ */ new Map(),
     subscribed: /* @__PURE__ */ new Set(),
     since: /* @__PURE__ */ new Map(),
     stateNodes: [],
@@ -1923,13 +1928,7 @@ ${GUEST_UI_LOOK_CSS}`;
     return m + "m" + (s ? s + "s" : "");
   }
   function tickStates() {
-    const now = Date.now();
-    for (const item of S.stateNodes) {
-      const state = stateOf(item.member);
-      const elapsed = elapsedOf(item.member, state);
-      item.el.dataset.state = state;
-      item.el.textContent = stateLabel(state, elapsed);
-    }
+    for (const item of S.stateNodes) renderState(item.el, item.member);
   }
   async function readJson(path, fallback) {
     try {
@@ -2091,6 +2090,12 @@ ${GUEST_UI_LOOK_CSS}`;
     return S.live.get(member.sessionId) || null;
   }
   function stateOf(member) {
+    const svc = S.service.get(member.sessionId);
+    if (svc) {
+      if (svc.running) return "running";
+      if (svc.lastMs) return "done";
+      return "idle";
+    }
     const live = liveOf(member);
     if (!live) return "unknown";
     if (live.activity === "running" || live.activity === "retrying") return "running";
@@ -2101,6 +2106,42 @@ ${GUEST_UI_LOOK_CSS}`;
     }
     return "unknown";
   }
+  function lastMsOf(member) {
+    const svc = S.service.get(member.sessionId);
+    if (svc && svc.lastMs) return svc.lastMs;
+    return 0;
+  }
+  var STATE_ICON = { done: "\u2713", failed: "\u2715", waiting: "\u25D4", idle: "\xB7", unknown: "\u2014" };
+  function renderState(el3, member) {
+    const state = stateOf(member);
+    const elapsed = elapsedOf(member, state);
+    el3.dataset.state = state;
+    el3.replaceChildren();
+    const icon2 = document.createElement("span");
+    icon2.className = "state-icon";
+    if (state === "running" || state === "running-child") {
+      const spin = document.createElement("span");
+      spin.className = "spin";
+      icon2.appendChild(spin);
+    } else {
+      icon2.textContent = STATE_ICON[state] || STATE_ICON.unknown;
+    }
+    const text = document.createElement("span");
+    text.className = "state-time";
+    if (state === "running" || state === "running-child") {
+      text.textContent = elapsed > 0 ? fmtElapsed(elapsed) : "";
+    } else if (state === "done") {
+      const ms = lastMsOf(member);
+      text.textContent = ms ? t("lastTurn") + " " + fmtElapsed(ms) : t("done");
+    } else if (state === "idle") {
+      text.textContent = t("idle");
+    } else if (state === "waiting") {
+      text.textContent = t("waiting");
+    } else {
+      text.textContent = "";
+    }
+    el3.append(icon2, text);
+  }
   function elapsedOf(member, state) {
     const running = state === "running" || state === "running-child";
     if (!running) {
@@ -2109,15 +2150,6 @@ ${GUEST_UI_LOOK_CSS}`;
     }
     if (!S.since.has(member.sessionId)) S.since.set(member.sessionId, Date.now());
     return Date.now() - S.since.get(member.sessionId);
-  }
-  function stateLabel(state, elapsed) {
-    const suffix = elapsed > 0 ? " \xB7 " + fmtElapsed(elapsed) : "";
-    if (state === "running") return "\u25CC " + t("running") + suffix;
-    if (state === "running-child") return "\u25CC " + t("runningChild") + suffix;
-    if (state === "waiting") return "\u25D4 " + t("waiting");
-    if (state === "failed") return "\u2715 " + t("failed");
-    if (state === "idle") return "\xB7 " + t("idle");
-    return "\xB7 " + t("unknown");
   }
   async function serviceStates(ids) {
     if (!ids.length || typeof host.serviceRequest !== "function") return null;
@@ -2148,8 +2180,10 @@ ${GUEST_UI_LOOK_CSS}`;
         for (const member of task.members || []) wanted.add(member.sessionId);
       }
       const over = await serviceStates([...wanted]);
+      S.service = /* @__PURE__ */ new Map();
       if (over) {
         for (const [id, state] of Object.entries(over)) {
+          S.service.set(id, { running: Boolean(state && state.running), lastMs: Number(state && state.lastMs) || 0 });
           const current = S.live.get(id) || { activity: "unknown", title: "", directory: "", parentId: null };
           current.activity = state && state.running ? "running" : "idle";
           S.live.set(id, current);
@@ -2317,9 +2351,7 @@ ${GUEST_UI_LOOK_CSS}`;
     info.append(title, sub);
     const state = document.createElement("span");
     state.className = "state";
-    const stateValue = stateOf(member);
-    state.dataset.state = stateValue;
-    state.textContent = stateLabel(stateValue, elapsedOf(member, stateValue));
+    renderState(state, member);
     S.stateNodes.push({ el: state, member });
     const actions = document.createElement("span");
     actions.className = "row-actions";

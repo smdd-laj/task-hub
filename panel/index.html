@@ -77,7 +77,13 @@
   .btn.danger { color: var(--error-text, #c0392b); border-color: var(--error-text, #c0392b); }
   .btn.active { border-color: var(--accent); color: var(--accent); }
   .state { flex: 0 0 auto; display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--hint); }
-  .state-icon { line-height: 1; }
+  .state-icon { line-height: 1; display: inline-flex; align-items: center; }
+  .spin {
+    width: 9px; height: 9px; border-radius: 50%;
+    border: 1.5px solid currentColor; border-right-color: transparent;
+    display: inline-block; animation: thspin .8s linear infinite;
+  }
+  @keyframes thspin { to { transform: rotate(360deg); } }
   .state[data-state="running"] { color: var(--accent); }
   .state[data-state="running-child"] { color: var(--accent); }
   .state[data-state="waiting"] { color: var(--warning-text, #b26a00); }
