@@ -21,6 +21,9 @@ const DICT = {
     readFail: "Cannot read folder",
     running: "running", runningChild: "subagent", waiting: "waiting", idle: "idle", failed: "failed", unknown: "—",
     lastTurn: "last", done: "done",
+    summarize: "Ask coordinator", summaryQueued: "Switched to the coordinator, prompt is in its chat box",
+    summaryPrompt: (title, dir) =>
+      "Summarize task \"" + title + "\" now. Read " + dir + "/SUMMARY.md and every progress-*.md, then answer in six parts: 1) one-line status, 2) done, 3) in progress, 4) blocked / waiting on whom, 5) pitfalls hit so far with where they live, 6) next three actions. Append settled conclusions to SUMMARY.md with their source; leave open items in the progress files.",
     coord: "coordinator", setCoord: "Make coordinator", clearCoord: "Unset coordinator",
     compose: "To chat box", composed: "Added to the chat box, send it yourself",
     remove: "Remove", open: "Open this session", gone: "Session not found",
@@ -41,6 +44,9 @@ const DICT = {
     external: "外部", unreadable: "外部目录：面板只记录和复制路径，不读取里面的文件。", readFail: "读不到目录",
     running: "运行中", runningChild: "子代理", waiting: "等待", idle: "空闲", failed: "失败", unknown: "—",
     lastTurn: "上轮", done: "完成",
+    summarize: "让协调总结", summaryQueued: "已切到协调会话，提示词在它的输入框里",
+    summaryPrompt: (title, dir) =>
+      "现在总结任务「" + title + "」。先读 " + dir + "/SUMMARY.md 和所有 progress-*.md，然后按六段回答：1) 一句话现状 2) 已完成 3) 进行中 4) 卡住的地方与在等谁 5) 已经踩过的坑及各自位置 6) 接下来三步。把已定的结论带出处追加进 SUMMARY.md，未定的留在各 progress 文件里。",
     coord: "协调", setCoord: "设为协调", clearCoord: "取消协调",
     compose: "放入聊天框", composed: "已放入聊天框，确认后自己发送",
     remove: "移除", open: "打开这个会话", gone: "会话不存在",
@@ -621,6 +627,19 @@ async function renderDetail() {
     button(t("addSession"), "", () => void openPicker(task)),
     del
   )
+  if (task.coordinator) {
+    headActions.prepend(
+      button(t("summarize"), "primary", async () => {
+        try {
+          await host.openSession(task.coordinator)
+          await host.compose({ text: t("summaryPrompt")(task.title || task.id, task.progressDir || ""), mode: "replace" })
+          toast(t("summaryQueued"), "success")
+        } catch (error) {
+          toast(String((error && error.code) || "ERR"), "error")
+        }
+      })
+    )
+  }
   head.appendChild(headActions)
   box.appendChild(head)
 

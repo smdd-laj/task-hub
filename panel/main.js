@@ -1799,6 +1799,9 @@ ${GUEST_UI_LOOK_CSS}`;
       unknown: "\u2014",
       lastTurn: "last",
       done: "done",
+      summarize: "Ask coordinator",
+      summaryQueued: "Switched to the coordinator, prompt is in its chat box",
+      summaryPrompt: (title, dir) => 'Summarize task "' + title + '" now. Read ' + dir + "/SUMMARY.md and every progress-*.md, then answer in six parts: 1) one-line status, 2) done, 3) in progress, 4) blocked / waiting on whom, 5) pitfalls hit so far with where they live, 6) next three actions. Append settled conclusions to SUMMARY.md with their source; leave open items in the progress files.",
       coord: "coordinator",
       setCoord: "Make coordinator",
       clearCoord: "Unset coordinator",
@@ -1861,6 +1864,9 @@ ${GUEST_UI_LOOK_CSS}`;
       unknown: "\u2014",
       lastTurn: "\u4E0A\u8F6E",
       done: "\u5B8C\u6210",
+      summarize: "\u8BA9\u534F\u8C03\u603B\u7ED3",
+      summaryQueued: "\u5DF2\u5207\u5230\u534F\u8C03\u4F1A\u8BDD\uFF0C\u63D0\u793A\u8BCD\u5728\u5B83\u7684\u8F93\u5165\u6846\u91CC",
+      summaryPrompt: (title, dir) => "\u73B0\u5728\u603B\u7ED3\u4EFB\u52A1\u300C" + title + "\u300D\u3002\u5148\u8BFB " + dir + "/SUMMARY.md \u548C\u6240\u6709 progress-*.md\uFF0C\u7136\u540E\u6309\u516D\u6BB5\u56DE\u7B54\uFF1A1) \u4E00\u53E5\u8BDD\u73B0\u72B6 2) \u5DF2\u5B8C\u6210 3) \u8FDB\u884C\u4E2D 4) \u5361\u4F4F\u7684\u5730\u65B9\u4E0E\u5728\u7B49\u8C01 5) \u5DF2\u7ECF\u8E29\u8FC7\u7684\u5751\u53CA\u5404\u81EA\u4F4D\u7F6E 6) \u63A5\u4E0B\u6765\u4E09\u6B65\u3002\u628A\u5DF2\u5B9A\u7684\u7ED3\u8BBA\u5E26\u51FA\u5904\u8FFD\u52A0\u8FDB SUMMARY.md\uFF0C\u672A\u5B9A\u7684\u7559\u5728\u5404 progress \u6587\u4EF6\u91CC\u3002",
       coord: "\u534F\u8C03",
       setCoord: "\u8BBE\u4E3A\u534F\u8C03",
       clearCoord: "\u53D6\u6D88\u534F\u8C03",
@@ -2422,6 +2428,19 @@ ${GUEST_UI_LOOK_CSS}`;
       button2(t("addSession"), "", () => void openPicker(task)),
       del
     );
+    if (task.coordinator) {
+      headActions.prepend(
+        button2(t("summarize"), "primary", async () => {
+          try {
+            await host.openSession(task.coordinator);
+            await host.compose({ text: t("summaryPrompt")(task.title || task.id, task.progressDir || ""), mode: "replace" });
+            toast(t("summaryQueued"), "success");
+          } catch (error) {
+            toast(String(error && error.code || "ERR"), "error");
+          }
+        })
+      );
+    }
     head.appendChild(headActions);
     box.appendChild(head);
     const prow = document.createElement("div");
