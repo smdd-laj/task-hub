@@ -6,7 +6,7 @@ const run = promisify(execFile)
 const PORT = Number(process.env.OPENCHAMBER_SERVICE_PORT || 0)
 const TOKEN = process.env.OPENCHAMBER_SERVICE_TOKEN || ""
 
-const CACHE_MS = 1500
+const CACHE_MS = 4000
 let cache = { at: 0, value: {} }
 let inflight = null
 
