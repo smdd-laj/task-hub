@@ -162,18 +162,41 @@ async function cliSeed() {
   cliInflight = (async () => {
     const out = await cli(["api", "get", "/api/session?limit=500"])
     if (!out) return
+    let rows = []
     try {
       const parsed = JSON.parse(out)
-      const rows = Array.isArray(parsed) ? parsed : parsed.data || []
-      for (const session of rows) {
-        const current = states.get(session.id) || { running: false, since: 0, lastMs: 0, updatedAt: 0 }
-        const turn = session.metadata?.openchamber?.turn || {}
-        if (!current.running) current.lastMs = current.lastMs || Number(turn.durationMs) || 0
-        current.updatedAt = current.updatedAt || Number(session.time?.updated) || 0
-        states.set(session.id, current)
+      rows = Array.isArray(parsed) ? parsed : parsed.data || []
+    } catch {
+      return
+    }
+    const now = Date.now()
+    for (const session of rows) {
+      const current = states.get(session.id) || { running: false, since: 0, lastMs: 0, updatedAt: 0 }
+      const turn = session.metadata?.openchamber?.turn || {}
+      if (!current.running) current.lastMs = current.lastMs || Number(turn.durationMs) || 0
+      current.updatedAt = current.updatedAt || Number(session.time?.updated) || 0
+
+      // 服务可能在这个会话已经跑起来之后才启动；没收到 started 事件时，用最后一条消息补判一次。
+      const updated = Number(session.time?.updated) || 0
+      const turnEnd = Number(turn.endedAt) || 0
+      if (!current.running && updated && now - updated < 60 * 60 * 1000) {
+        const msgOut = await cli(["api", "get", `/api/session/${session.id}/message?limit=1`], 8000)
+        if (msgOut) {
+          try {
+            const parsedMsg = JSON.parse(msgOut)
+            const list = Array.isArray(parsedMsg) ? parsedMsg : parsedMsg.data || []
+            const last = list[list.length - 1]
+            const lastAt = last ? Number((last.info || last).time?.created) || 0 : 0
+            if (lastAt && turnEnd && lastAt > turnEnd) {
+              current.running = true
+              current.since = lastAt
+            }
+          } catch {}
+        }
       }
-      cliAt = Date.now()
-    } catch {}
+      states.set(session.id, current)
+    }
+    cliAt = Date.now()
   })().finally(() => {
     cliInflight = null
   })
@@ -205,6 +228,8 @@ const server = http.createServer(async (req, res) => {
       .filter((id) => /^ses_[A-Za-z0-9]+$/.test(id))
 
     if (!streamAlive() && Date.now() - cliAt > CLI_POLL_MS) await cliSeed()
+    // 事件流看不到的会话（服务晚启动、或错过 started）用一次快照补齐。
+    if (ids.some((id) => !states.has(id)) && Date.now() - cliAt > CLI_POLL_MS) await cliSeed()
 
     const now = Date.now()
     const out = {}
