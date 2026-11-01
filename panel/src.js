@@ -8,7 +8,7 @@ const DEFAULT_ROOT = "~/.task-hub"
 const FILE_TASKS = "~/.task-hub/tasks.json"
 const FILE_SETTINGS = "~/.task-hub/settings.json"
 const KEY_SELECTED = "taskhub.selected"
-const AUTO_MS = 3000
+const AUTO_MS = 1500
 
 const DICT = {
   en: {
@@ -55,12 +55,31 @@ const DICT = {
 const S = {
   ids: [], tasks: new Map(), settings: { progressRoot: DEFAULT_ROOT },
   selected: null, query: "", sort: "manual", me: null, meTitle: "",
-  live: new Map(), busy: new Set(), subscribed: new Set(), loc: "en", auto: 0, mounted: false,
+  live: new Map(), busy: new Set(), subscribed: new Set(), since: new Map(), stateNodes: [], ticker: 0, loc: "en", auto: 0, mounted: false,
   formMode: "create", formId: null, pickQ: "", pickRows: [], pickProjects: 0,
   deleting: null, deleteTimer: 0, dragId: null
 }
 
 const t = (key) => (DICT[S.loc] && DICT[S.loc][key]) || DICT.en[key] || key
+
+function fmtElapsed(ms) {
+  const total = Math.max(0, Math.round(ms / 1000))
+  if (total < 60) return total + "s"
+  const m = Math.floor(total / 60)
+  const s = total % 60
+  return m + "m" + (s ? s + "s" : "")
+}
+
+/* 运行中的会话按秒跳动：宿主只给 activity，不给起点，所以从面板第一次看到 running 开始计时。 */
+function tickStates() {
+  const now = Date.now()
+  for (const item of S.stateNodes) {
+    const state = stateOf(item.member)
+    const elapsed = elapsedOf(item.member, state)
+    item.el.dataset.state = state
+    item.el.textContent = stateLabel(state, elapsed)
+  }
+}
 
 /* ---------------- data files ---------------- */
 
@@ -256,9 +275,20 @@ function stateOf(member) {
   return "unknown"
 }
 
-function stateLabel(state) {
-  if (state === "running") return "\u25cc " + t("running")
-  if (state === "running-child") return "\u25cc " + t("runningChild")
+function elapsedOf(member, state) {
+  const running = state === "running" || state === "running-child"
+  if (!running) {
+    S.since.delete(member.sessionId)
+    return 0
+  }
+  if (!S.since.has(member.sessionId)) S.since.set(member.sessionId, Date.now())
+  return Date.now() - S.since.get(member.sessionId)
+}
+
+function stateLabel(state, elapsed) {
+  const suffix = elapsed > 0 ? " \u00b7 " + fmtElapsed(elapsed) : ""
+  if (state === "running") return "\u25cc " + t("running") + suffix
+  if (state === "running-child") return "\u25cc " + t("runningChild") + suffix
   if (state === "waiting") return "\u25d4 " + t("waiting")
   if (state === "failed") return "\u2715 " + t("failed")
   if (state === "idle") return "\u00b7 " + t("idle")
@@ -452,8 +482,10 @@ function memberRow(task, member, index) {
 
   const state = document.createElement("span")
   state.className = "state"
-  state.dataset.state = stateOf(member)
-  state.textContent = stateLabel(stateOf(member))
+  const stateValue = stateOf(member)
+  state.dataset.state = stateValue
+  state.textContent = stateLabel(stateValue, elapsedOf(member, stateValue))
+  S.stateNodes.push({ el: state, member })
 
   const actions = document.createElement("span")
   actions.className = "row-actions"
@@ -470,6 +502,7 @@ function memberRow(task, member, index) {
 async function renderDetail() {
   const box = el("detail")
   box.replaceChildren()
+  S.stateNodes = []
   const task = currentTask()
   if (!task) {
     const empty = document.createElement("div")
@@ -837,6 +870,7 @@ host.onReady((ctx) => {
 
   if (S.mounted) return
   S.mounted = true
+  if (!S.ticker) S.ticker = setInterval(tickStates, 1000)
   el("refresh").onclick = () => void loadAll()
   el("search-toggle").onclick = () => {
     const top = document.querySelector(".top")

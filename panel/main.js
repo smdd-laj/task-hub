@@ -1764,7 +1764,7 @@ ${GUEST_UI_LOOK_CSS}`;
   var DEFAULT_ROOT = "~/.task-hub";
   var FILE_TASKS = "~/.task-hub/tasks.json";
   var FILE_SETTINGS = "~/.task-hub/settings.json";
-  var AUTO_MS = 3e3;
+  var AUTO_MS = 1500;
   var DICT = {
     en: {
       tasks: "Tasks",
@@ -1899,6 +1899,9 @@ ${GUEST_UI_LOOK_CSS}`;
     live: /* @__PURE__ */ new Map(),
     busy: /* @__PURE__ */ new Set(),
     subscribed: /* @__PURE__ */ new Set(),
+    since: /* @__PURE__ */ new Map(),
+    stateNodes: [],
+    ticker: 0,
     loc: "en",
     auto: 0,
     mounted: false,
@@ -1912,6 +1915,22 @@ ${GUEST_UI_LOOK_CSS}`;
     dragId: null
   };
   var t = (key) => DICT[S.loc] && DICT[S.loc][key] || DICT.en[key] || key;
+  function fmtElapsed(ms) {
+    const total = Math.max(0, Math.round(ms / 1e3));
+    if (total < 60) return total + "s";
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return m + "m" + (s ? s + "s" : "");
+  }
+  function tickStates() {
+    const now = Date.now();
+    for (const item of S.stateNodes) {
+      const state = stateOf(item.member);
+      const elapsed = elapsedOf(item.member, state);
+      item.el.dataset.state = state;
+      item.el.textContent = stateLabel(state, elapsed);
+    }
+  }
   async function readJson(path, fallback) {
     try {
       const { content } = await host.readFile(path);
@@ -2082,9 +2101,19 @@ ${GUEST_UI_LOOK_CSS}`;
     }
     return "unknown";
   }
-  function stateLabel(state) {
-    if (state === "running") return "\u25CC " + t("running");
-    if (state === "running-child") return "\u25CC " + t("runningChild");
+  function elapsedOf(member, state) {
+    const running = state === "running" || state === "running-child";
+    if (!running) {
+      S.since.delete(member.sessionId);
+      return 0;
+    }
+    if (!S.since.has(member.sessionId)) S.since.set(member.sessionId, Date.now());
+    return Date.now() - S.since.get(member.sessionId);
+  }
+  function stateLabel(state, elapsed) {
+    const suffix = elapsed > 0 ? " \xB7 " + fmtElapsed(elapsed) : "";
+    if (state === "running") return "\u25CC " + t("running") + suffix;
+    if (state === "running-child") return "\u25CC " + t("runningChild") + suffix;
     if (state === "waiting") return "\u25D4 " + t("waiting");
     if (state === "failed") return "\u2715 " + t("failed");
     if (state === "idle") return "\xB7 " + t("idle");
@@ -2261,8 +2290,10 @@ ${GUEST_UI_LOOK_CSS}`;
     info.append(title, sub);
     const state = document.createElement("span");
     state.className = "state";
-    state.dataset.state = stateOf(member);
-    state.textContent = stateLabel(stateOf(member));
+    const stateValue = stateOf(member);
+    state.dataset.state = stateValue;
+    state.textContent = stateLabel(stateValue, elapsedOf(member, stateValue));
+    S.stateNodes.push({ el: state, member });
     const actions = document.createElement("span");
     actions.className = "row-actions";
     const isCoord = task.coordinator === member.sessionId;
@@ -2276,6 +2307,7 @@ ${GUEST_UI_LOOK_CSS}`;
   async function renderDetail() {
     const box = el2("detail");
     box.replaceChildren();
+    S.stateNodes = [];
     const task = currentTask();
     if (!task) {
       const empty = document.createElement("div");
@@ -2604,6 +2636,7 @@ ${GUEST_UI_LOOK_CSS}`;
     el2("f-dir").placeholder = DEFAULT_ROOT + "/<id>";
     if (S.mounted) return;
     S.mounted = true;
+    if (!S.ticker) S.ticker = setInterval(tickStates, 1e3);
     el2("refresh").onclick = () => void loadAll();
     el2("search-toggle").onclick = () => {
       const top = document.querySelector(".top");
