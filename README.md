@@ -31,6 +31,18 @@ Everything lives under `~/.task-hub/`:
 - `settings.json` — the progress root.
 - `<task id>/` — that task's progress folder (`README.md`, `SUMMARY.md`, `progress-*.md`).
 
+## Status
+
+A small local service keeps every session's running state. It subscribes to the
+OpenChamber event stream, so a turn starting or finishing shows up immediately;
+if the stream goes quiet for 30 seconds it falls back to reading session state
+through the `opencode` CLI. The panel asks the service for the sessions on the
+board and shows a spinner with the real elapsed time while a turn runs, and a
+check with the last turn's duration once it finishes.
+
+The service needs the `opencode` CLI on `PATH`; that is the only external command
+it runs.
+
 ## Install
 
 Settings → Extensions → paste the folder, ZIP or git URL → Add.
