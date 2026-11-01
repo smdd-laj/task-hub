@@ -1906,6 +1906,7 @@ ${GUEST_UI_LOOK_CSS}`;
     subscribed: /* @__PURE__ */ new Set(),
     since: /* @__PURE__ */ new Map(),
     stateNodes: [],
+    lastKey: "",
     ticker: 0,
     loc: "en",
     auto: 0,
@@ -2048,7 +2049,7 @@ ${GUEST_UI_LOOK_CSS}`;
     if (repaintTimer) return;
     repaintTimer = setTimeout(() => {
       repaintTimer = 0;
-      render();
+      tickStates();
     }, 120);
   }
   async function subscribeLive() {
@@ -2190,7 +2191,13 @@ ${GUEST_UI_LOOK_CSS}`;
         }
       }
       el2("status").textContent = "";
-      render();
+      const key = JSON.stringify(list.map((task) => [task.id, task.title, task.progressDir, task.coordinator, (task.members || []).map((m) => [m.sessionId, m.title])]));
+      if (key !== S.lastKey) {
+        S.lastKey = key;
+        render();
+      } else {
+        tickStates();
+      }
     } catch (error) {
       el2("status").textContent = error && error.code || "ERR";
     }

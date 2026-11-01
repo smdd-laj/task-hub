@@ -57,7 +57,7 @@ const DICT = {
 const S = {
   ids: [], tasks: new Map(), settings: { progressRoot: DEFAULT_ROOT },
   selected: null, query: "", sort: "manual", me: null, meTitle: "",
-  live: new Map(), busy: new Set(), service: new Map(), subscribed: new Set(), since: new Map(), stateNodes: [], ticker: 0, loc: "en", auto: 0, mounted: false,
+  live: new Map(), busy: new Set(), service: new Map(), subscribed: new Set(), since: new Map(), stateNodes: [], lastKey: "", ticker: 0, loc: "en", auto: 0, mounted: false,
   formMode: "create", formId: null, pickQ: "", pickRows: [], pickProjects: 0,
   deleting: null, deleteTimer: 0, dragId: null
 }
@@ -213,7 +213,7 @@ function scheduleRepaint() {
   if (repaintTimer) return
   repaintTimer = setTimeout(() => {
     repaintTimer = 0
-    render()
+    tickStates()
   }, 120)
 }
 
@@ -371,7 +371,14 @@ async function loadAll() {
       }
     }
     el("status").textContent = ""
-    render()
+    // 轮询只更新状态点，任务结构没变就不重建 DOM，避免整块重绘带来的卡顿。
+    const key = JSON.stringify(list.map((task) => [task.id, task.title, task.progressDir, task.coordinator, (task.members || []).map((m) => [m.sessionId, m.title])]))
+    if (key !== S.lastKey) {
+      S.lastKey = key
+      render()
+    } else {
+      tickStates()
+    }
   } catch (error) {
     el("status").textContent = (error && error.code) || "ERR"
   }
