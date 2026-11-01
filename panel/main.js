@@ -2149,6 +2149,8 @@ ${GUEST_UI_LOOK_CSS}`;
       S.since.delete(member.sessionId);
       return 0;
     }
+    const svc = S.service.get(member.sessionId);
+    if (svc && svc.since) return Math.max(0, Date.now() - svc.since);
     if (!S.since.has(member.sessionId)) S.since.set(member.sessionId, Date.now());
     return Date.now() - S.since.get(member.sessionId);
   }
@@ -2184,7 +2186,11 @@ ${GUEST_UI_LOOK_CSS}`;
       S.service = /* @__PURE__ */ new Map();
       if (over) {
         for (const [id, state] of Object.entries(over)) {
-          S.service.set(id, { running: Boolean(state && state.running), lastMs: Number(state && state.lastMs) || 0 });
+          S.service.set(id, {
+            running: Boolean(state && state.running),
+            lastMs: Number(state && state.lastMs) || 0,
+            since: Number(state && state.since) || 0
+          });
           const current = S.live.get(id) || { activity: "unknown", title: "", directory: "", parentId: null };
           current.activity = state && state.running ? "running" : "idle";
           S.live.set(id, current);
