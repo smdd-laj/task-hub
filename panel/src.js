@@ -8,6 +8,7 @@ const DEFAULT_ROOT = "~/.task-hub"
 const FILE_TASKS = "~/.task-hub/tasks.json"
 const FILE_SETTINGS = "~/.task-hub/settings.json"
 const KEY_SELECTED = "taskhub.selected"
+const AUTO_KEY = "taskhub.auto"
 const AUTO_MS = 1500
 
 const DICT = {
@@ -20,11 +21,26 @@ const DICT = {
     external: "external", unreadable: "External folder: the panel records and copies the path but does not read its files.",
     readFail: "Cannot read folder",
     running: "running", runningChild: "subagent", waiting: "waiting", idle: "idle", failed: "failed", unknown: "—",
-    lastTurn: "last", done: "done",
-    summarize: "Ask coordinator", summaryQueued: "Switched to the coordinator, prompt is in its chat box",
+    lastTurn: "last", done: "done", noFolder: "no folder",
+    roleMain: "main", roleHelper: "helper", roleNone: "unset", actions: "Actions",
+    setMain: "Make main", setHelper: "Make helper",
+    fillHelpers: "Fill helpers", overCap: "over 3", noCoord: "No coordinator set", copyId: "Copy id", alias: "Display name", setAlias: "Rename", tidyTitles: "Tidy titles",
+    newSession: "New session", newSessionTitle: "Session name", newSessionRole: "Role", noDirectory: "This group has no absolute path to create in", sessionCreated: "Session created", creating: "Creating",
+    orphan: "Created but not saved to the roster",
+    fillPrompt: (title, dir, member) =>
+      "For task \"" + title + "\" add helper sessions for the worktree of \"" + member + "\". Read " + dir + " first. " +
+      "Keep each worktree to at most three sessions: one main line plus up to two helpers for small jobs such as reading code, checking a fact, or a quick question. " +
+      "If that worktree has no helper yet, create one with session.create in the same directory, give it a title naming the worktree and the purpose, and send one short first message: task name, progress folder, its own progress-<last 6 of its id>.md, and what to do. " +
+      "Register it in tasks.json members with role: \"helper\" and log it in that worktree's .dispatch.json. If it already has three, say which ones to merge or close instead. Start every message with your own role (main or helper).",
+    patrol: "Run a patrol",
+    patrolPrompt: (title, dir) =>
+      "Run one patrol round for task \"" + title + "\" as the coordinator. Read C:\\Users\\HUAWEI\\.task-hub\\tasks.json and " + dir + ", then SUMMARY.md and the progress-*.md that changed this round. Sort every member into running / can-advance / needs-user / done. Send only the can-advance ones a four-part message (new info / one checkable action / stop condition / which file to write, with 【回话】 and returnResult). Append sourced conclusions to SUMMARY.md. Ask me only on hard boundaries (production change, deleting data, merging master or release, messaging outside systems); settle wording and implementation choices from the records yourself and say what you decided. Report every member as \"name + full session id\".",
+    summarize: "Ask coordinator", jumpCoord: "Open coordinator", summaryQueued: "Switched to the coordinator, prompt is in its chat box",
     summaryPrompt: (title, dir) =>
       "Summarize task \"" + title + "\" now. Read " + dir + "/SUMMARY.md and every progress-*.md, then answer in six parts: 1) one-line status, 2) done, 3) in progress, 4) blocked / waiting on whom, 5) pitfalls hit so far with where they live, 6) next three actions. Append settled conclusions to SUMMARY.md with their source; leave open items in the progress files.",
-    coord: "coordinator", setCoord: "Make coordinator", clearCoord: "Unset coordinator",
+    titlePrompt: (title, dir) =>
+      "Tidy the session names for task \"" + title + "\". Read tasks.json and " + dir + ", then for every member set alias to \"<short project> - <what it is doing now>\": take the short project name from its worktree or directory (for example 微服务, 收银后端, goframe, cashier, H5), and describe the current concrete job from the newest progress file rather than the opening greeting. Rename the session itself with session_rename when you are sure; skip when the evidence is thin and list those instead. Write the result back to tasks.json and report each change as old -> new with the reason.",
+    coord: "coordinator", coordGroup: "coordinator here", setCoord: "Make coordinator", clearCoord: "Unset coordinator",
     compose: "To chat box", composed: "Added to the chat box, send it yourself",
     remove: "Remove", open: "Open this session", gone: "Session not found",
     save: "Save", cancel: "Cancel", title: "Task name", goal: "What it is", accept: "Done when",
@@ -43,11 +59,27 @@ const DICT = {
     progress: "进度目录", copyPath: "复制路径", copyDone: "路径已复制",
     external: "外部", unreadable: "外部目录：面板只记录和复制路径，不读取里面的文件。", readFail: "读不到目录",
     running: "运行中", runningChild: "子代理", waiting: "等待", idle: "空闲", failed: "失败", unknown: "—",
-    lastTurn: "上轮", done: "完成",
-    summarize: "让协调总结", summaryQueued: "已切到协调会话，提示词在它的输入框里",
+    lastTurn: "上轮", done: "完成", noFolder: "无目录",
+    roleMain: "主线", roleHelper: "辅助", roleNone: "未标", actions: "操作",
+    setMain: "设为主线", setHelper: "设为辅助",
+    fillHelpers: "补充看板会话", overCap: "超过三个", noCoord: "这件任务还没设协调会话", copyId: "复制会话 id", alias: "显示名", setAlias: "改标题", tidyTitles: "让协调整理标题",
+    newSession: "新会话", newSessionTitle: "会话名", newSessionRole: "角色", noDirectory: "这一组拿不到绝对路径，不能建会话", sessionCreated: "已建会话", creating: "创建中",
+    orphan: "会话已建，但没写进名册",
+    fillPrompt: (title, dir, member) =>
+      "针对任务「" + title + "」，给「" + member + "」所在的 worktree 补充辅助会话。先读 " + dir + "。" +
+      "每个 worktree 最多三个会话：一个主线推进会话，另有至多两个辅助会话，专门做查代码、核事实、小问询这类小活。" +
+      "如果那个 worktree 还没有辅助会话，用 session.create 在它的同目录建一个：标题写明 worktree 名和用途；首条消息只写四样——任务名、进度目录、它自己的 progress-<id后6位>.md、要它做什么。" +
+      "建完写进 tasks.json 的 members，带 role: \"helper\"，并在该 worktree 的 .dispatch.json 记一行。已经满三个的，说明哪些该合并或结束，不要再加。" +
+      "你发出的每条消息第一行写明自己的角色（主线或辅助）。",
+    patrol: "让协调巡检",
+    patrolPrompt: (title, dir) =>
+      "现在按信箱调度跑一轮巡检任务「" + title + "」。先读 C:\\Users\\HUAWEI\\.task-hub\\tasks.json 和 " + dir + "，再读 SUMMARY.md 与本轮有变化的 progress-*.md。对每个成员分在跑 / 可推进 / 等你定 / 已完成；只给可推进的发一条四段式消息（新信息 / 一个可验收动作 / 停止条件 / 写回路径，带【回话】和 returnResult）；有出处的结论写进 SUMMARY.md；命中硬边界（生产改动、删数据、合并 master 或 release、对外发消息）才问我，口径与实现选择按记录自己定并写明依据。成员一律报「名称 + 完整 session id」。",
+    summarize: "让协调总结", jumpCoord: "跳到协调", summaryQueued: "已切到协调会话，提示词在它的输入框里",
     summaryPrompt: (title, dir) =>
       "现在总结任务「" + title + "」。先读 " + dir + "/SUMMARY.md 和所有 progress-*.md，然后按六段回答：1) 一句话现状 2) 已完成 3) 进行中 4) 卡住的地方与在等谁 5) 已经踩过的坑及各自位置 6) 接下来三步。把已定的结论带出处追加进 SUMMARY.md，未定的留在各 progress 文件里。",
-    coord: "协调", setCoord: "设为协调", clearCoord: "取消协调",
+    titlePrompt: (title, dir) =>
+      "整理任务「" + title + "」下所有会话的名字。先读 tasks.json 和 " + dir + "。对每个成员，把 alias 设成「项目简称 - 现在在做什么」：项目简称取它所在 worktree 或目录名（例如 微服务、收银后端、goframe、cashier、H5），具体任务从最新的 progress 文件里看，不要照抄标题开头那句问候。有把握时用 session_rename 把会话本体也改成同样的名字；证据不足的跳过并在回报里列出来。改完写回 tasks.json，并把每处改动以「旧名 → 新名（依据）」列给我。",
+    coord: "协调", coordGroup: "协调所在", setCoord: "标识协调会话", clearCoord: "取消协调",
     compose: "放入聊天框", composed: "已放入聊天框，确认后自己发送",
     remove: "移除", open: "打开这个会话", gone: "会话不存在",
     save: "保存", cancel: "取消", title: "任务名", goal: "做什么", accept: "验收是什么",
@@ -63,8 +95,9 @@ const DICT = {
 const S = {
   ids: [], tasks: new Map(), settings: { progressRoot: DEFAULT_ROOT },
   selected: null, query: "", sort: "manual", me: null, meTitle: "",
-  live: new Map(), busy: new Set(), service: new Map(), subscribed: new Set(), since: new Map(), stateNodes: [], lastKey: "", ticker: 0, loc: "en", auto: 0, mounted: false,
+  live: new Map(), busy: new Set(), service: new Map(), subscribed: new Set(), since: new Map(), stateNodes: [], groupNodes: [], expanded: new Set(), openMenu: null, headMenu: false, renaming: null, lastKey: "", ticker: 0, loc: "en", auto: 0, mounted: false,
   formMode: "create", formId: null, pickQ: "", pickRows: [], pickProjects: 0,
+  newFor: null, newTitle: "", newRole: "helper", newBusy: false, newCreated: "",
   deleting: null, deleteTimer: 0, dragId: null
 }
 
@@ -81,6 +114,7 @@ function fmtElapsed(ms) {
 /* 运行中的会话按秒跳动：宿主只给 activity，不给起点，所以从面板第一次看到 running 开始计时。 */
 function tickStates() {
   for (const item of S.stateNodes) renderState(item.el, item.member)
+  for (const item of S.groupNodes) paintGroupState(item.el, item.list)
 }
 
 /* ---------------- data files ---------------- */
@@ -337,23 +371,44 @@ function elapsedOf(member, state) {
 
 /* ---------------- data ---------------- */
 
-async function serviceStates(ids) {
-  if (!ids.length || typeof host.serviceRequest !== "function") return null
+/** 建会话没有宿主 API，走本地服务；服务已带 exec: opencode 权限。 */
+async function createSessionRequest(directory, title, agent) {
+  if (typeof host.serviceRequest !== "function") return { id: "", error: "no-service-api" }
   try {
     const res = await host.serviceRequest({
-      method: "GET",
-      path: "/states",
-      query: { ids: ids.join(",") }
+      method: "POST",
+      path: "/createSession",
+      body: { directory, title, agent }
     })
-    const text = typeof res?.body === "string" ? res.body : null
-    if (!text) return null
-    return JSON.parse(text)
-  } catch {
-    return null
+    const text = typeof res?.body === "string" ? res.body : ""
+    const data = text ? JSON.parse(text) : null
+    if (data && data.sessionId) return { id: String(data.sessionId), error: "" }
+    return { id: "", error: (data && data.error) || "empty" }
+  } catch (error) {
+    return { id: "", error: String((error && error.code) || (error && error.message) || "ERR") }
   }
 }
 
-async function loadAll() {
+async function serviceStates(ids, force) {
+  if (!ids.length) return { data: null, error: "" }
+  if (typeof host.serviceRequest !== "function") return { data: null, error: "no-service-api" }
+  try {
+    const query = { ids: ids.join(",") }
+    if (force) query.force = "1"
+    const res = await host.serviceRequest({
+      method: "GET",
+      path: "/states",
+      query
+    })
+    const text = typeof res?.body === "string" ? res.body : null
+    if (!text) return { data: null, error: "empty" }
+    return { data: JSON.parse(text), error: "" }
+  } catch (error) {
+    return { data: null, error: String((error && error.code) || (error && error.message) || "ERR") }
+  }
+}
+
+async function loadAll(force = false) {
   try {
     S.settings = await readSettings()
     const list = await readTasks()
@@ -368,7 +423,8 @@ async function loadAll() {
     for (const task of S.tasks.values()) {
       for (const member of task.members || []) wanted.add(member.sessionId)
     }
-    const over = await serviceStates([...wanted])
+    const svc = await serviceStates([...wanted], force)
+    const over = svc.data ? svc.data.states : null
     S.service = new Map()
     if (over) {
       for (const [id, state] of Object.entries(over)) {
@@ -382,7 +438,7 @@ async function loadAll() {
         S.live.set(id, current)
       }
     }
-    el("status").textContent = ""
+    el("status").textContent = svc.error ? "svc:" + svc.error : ""
     // 轮询只更新状态点，任务结构没变就不重建 DOM，避免整块重绘带来的卡顿。
     const key = JSON.stringify(list.map((task) => [task.id, task.title, task.progressDir, task.coordinator, (task.members || []).map((m) => [m.sessionId, m.title])]))
     if (key !== S.lastKey) {
@@ -422,6 +478,16 @@ function visibleTasks() {
 function currentTask() {
   const list = visibleTasks()
   return list.find((task) => task.id === S.selected) || list[0] || null
+}
+
+async function gotoSession(sessionId) {
+  await host.openSession(sessionId)
+  // 目标会话可能从没开过这块面板：切过去后立刻拉一次，再补一次，防止第一次被切换过程吞掉。
+  if (typeof host.openSurface === "function") {
+    const open = () => host.openSurface("plugin:task-hub").catch(() => {})
+    void open()
+    setTimeout(() => void open(), 500)
+  }
 }
 
 function isMine(task) {
@@ -470,6 +536,8 @@ function renderList() {
     item.onclick = () => {
       S.selected = task.id
       S.deleting = null
+      // 表单属于某件任务的某个分组；换任务就收掉，免得挂到同名分组上。
+      S.newFor = null
       render()
     }
     box.appendChild(item)
@@ -520,7 +588,7 @@ function memberRow(task, member, index) {
   const nameBtn = document.createElement("button")
   nameBtn.type = "button"
   nameBtn.className = "link"
-  nameBtn.textContent = (live && live.title) || member.title || member.sessionId.slice(-6)
+  nameBtn.textContent = member.alias || (live && live.title) || member.title || member.sessionId.slice(-6)
   if (!live) {
     nameBtn.disabled = true
     nameBtn.title = t("gone")
@@ -528,7 +596,7 @@ function memberRow(task, member, index) {
     nameBtn.title = t("open")
     nameBtn.onclick = async () => {
       try {
-        await host.openSession(member.sessionId)
+        await gotoSession(member.sessionId)
       } catch (error) {
         toast(String((error && error.code) || "ERR"), "error")
       }
@@ -539,6 +607,13 @@ function memberRow(task, member, index) {
     const tag = document.createElement("span")
     tag.className = "tag coord"
     tag.textContent = t("coord")
+    title.appendChild(tag)
+  }
+  const role = member.role === "main" || member.role === "helper" ? member.role : ""
+  {
+    const tag = document.createElement("span")
+    tag.className = "tag role-" + (role || "none")
+    tag.textContent = role ? t(role === "main" ? "roleMain" : "roleHelper") : t("roleNone")
     title.appendChild(tag)
   }
   if (member.sessionId === S.me) {
@@ -571,12 +646,312 @@ function memberRow(task, member, index) {
   const actions = document.createElement("span")
   actions.className = "row-actions"
   const isCoord = task.coordinator === member.sessionId
-  actions.append(
-    button(isCoord ? "\u2605" : "\u2606", isCoord ? "primary" : "", () => void setCoordinator(task, isCoord ? null : member.sessionId)),
-    button(t("remove"), "", () => void dropMember(task, member.sessionId))
-  )
+  const roleNow = member.role === "helper" ? "helper" : "main"
+  const marker = button("\u22ef", isCoord ? "primary" : "", () => {
+    S.openMenu = S.openMenu === member.sessionId ? null : member.sessionId
+    void renderDetail()
+  })
+  marker.title = t("actions")
+  actions.append(marker)
 
+  const cell = document.createElement("div")
+  cell.className = "cell"
+  cell.appendChild(row)
   row.append(handle, info, state, actions)
+
+  if (S.renaming === member.sessionId) {
+    const editor = document.createElement("div")
+    editor.className = "menu"
+    const input = document.createElement("input")
+    input.type = "text"
+    input.className = "rename"
+    input.value = member.alias || member.title || ""
+    input.placeholder = t("alias")
+    const save = button(t("save"), "primary", () => void setAlias(task, member.sessionId, input.value))
+    const cancel = button(t("cancel"), "", () => {
+      S.renaming = null
+      void renderDetail()
+    })
+    editor.append(input, save, cancel)
+    cell.appendChild(editor)
+    setTimeout(() => input.focus(), 0)
+    return cell
+  }
+
+  if (S.openMenu === member.sessionId) {
+    const box = document.createElement("div")
+    box.className = "menu"
+    box.append(
+      button(t("setAlias"), "accent", () => {
+        S.renaming = member.sessionId
+        void renderDetail()
+      }),
+      button(t("copyId"), "accent", async () => {
+        try {
+          await host.writeClipboard(member.sessionId)
+          toast(t("copyDone"), "success")
+        } catch (error) {
+          toast(String((error && error.code) || "ERR"), "error")
+        }
+      }),
+      button(t("remove"), "danger", () => void dropMember(task, member.sessionId)),
+      button(isCoord ? t("clearCoord") : t("setCoord"), "accent", () => void setCoordinator(task, isCoord ? null : member.sessionId)),
+      button(t("setMain"), roleNow === "main" ? "primary" : "", () => void setRole(task, member.sessionId, "main")),
+      button(t("setHelper"), roleNow === "helper" ? "primary" : "", () => void setRole(task, member.sessionId, "helper")),
+      button(t("fillHelpers"), "accent", async () => {
+        try {
+          await gotoSession(member.sessionId)
+          await host.compose({
+            text: t("fillPrompt")(task.title || task.id, task.progressDir || "", member.title || member.sessionId.slice(-6)),
+            mode: "replace"
+          })
+          toast(t("summaryQueued"), "success")
+        } catch (error) {
+          toast(String((error && error.code) || "ERR"), "error")
+        }
+      })
+    )
+    cell.appendChild(box)
+  }
+  return cell
+}
+
+function groupMembers(members) {
+  const groups = new Map()
+  for (const member of members) {
+    const live = liveOf(member)
+    const dir = (live && live.directory) || member.directory || ""
+    const key = dir ? dir.split(/[\\/]/).filter(Boolean).pop() : t("noFolder")
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(member)
+  }
+  return groups
+}
+
+function groupState(list) {
+  const states = list.map((member) => stateOf(member))
+  if (states.includes("running") || states.includes("running-child")) return "running"
+  if (states.includes("waiting")) return "waiting"
+  if (states.includes("failed")) return "failed"
+  if (states.every((s) => s === "done")) return "done"
+  if (states.every((s) => s === "idle" || s === "done")) return "idle"
+  return "unknown"
+}
+
+function paintGroupState(el, list) {
+  const value = groupState(list)
+  el.dataset.state = value
+  el.replaceChildren()
+  const icon = document.createElement("span")
+  icon.className = "state-icon"
+  if (value === "running" || value === "running-child") {
+    const spin = document.createElement("span")
+    spin.className = "spin"
+    icon.appendChild(spin)
+  } else {
+    icon.textContent = STATE_ICON[value] || STATE_ICON.unknown
+  }
+  const text = document.createElement("span")
+  text.className = "state-time"
+  text.textContent = value === "running" || value === "running-child" ? t("running") : t(value) || ""
+  el.append(icon, text)
+}
+
+/** 组内成员的绝对目录；宿主对 worktree 会给短名或 unknown，只有绝对路径能用来建会话。 */
+function groupDirectory(list) {
+  const dirs = []
+  let opaque = 0
+  for (const member of list) {
+    const live = S.live.get(member.sessionId)
+    const dir = String((live && live.directory) || "")
+    if (/^[A-Za-z]:[\\/]/.test(dir) || dir.startsWith("/")) {
+      if (!dirs.includes(dir)) dirs.push(dir)
+      continue
+    }
+    // 会话还在、但宿主只给了短名（worktree 目录常见）：这一组的真实路径无法确定。
+    if (live && dir) opaque++
+  }
+  // 分组键是目录末段：D:\work\cashier 与 D:\work\.worktrees\cashier 会并成一组。
+  // 只有绝对路径唯一、且没有定位不了的活会话时才敢建，否则会建到错的那一层。
+  return dirs.length === 1 && opaque === 0 ? dirs[0] : ""
+}
+
+function newSessionEditor(task, key, list) {
+  const box = document.createElement("div")
+  box.className = "menu new-session"
+  // 上一次建成了但没写进名册：只给 id 和复制，不再给创建按钮，免得重复建。
+  if (S.newCreated) {
+    const note = document.createElement("div")
+    note.className = "orphan"
+    note.textContent = t("orphan") + " \u00b7 " + S.newCreated
+    const copy = button(t("copyId"), "accent", async () => {
+      try {
+        await host.writeClipboard(S.newCreated)
+        toast(t("copyDone"), "success")
+      } catch (error) {
+        toast(String((error && error.code) || "ERR"), "error")
+      }
+    })
+    const close = button(t("cancel"), "", () => {
+      S.newCreated = ""
+      S.newFor = null
+      void renderDetail()
+    })
+    box.append(note, copy, close)
+    return box
+  }
+  const input = document.createElement("input")
+  input.type = "text"
+  input.className = "rename"
+  input.placeholder = t("newSessionTitle")
+  input.value = S.newTitle
+  input.oninput = () => {
+    S.newTitle = input.value
+  }
+  const roleMain = button(t("roleMain"), S.newRole === "main" ? "primary" : "", () => {
+    S.newRole = "main"
+    void renderDetail()
+  })
+  const roleHelper = button(t("roleHelper"), S.newRole === "helper" ? "primary" : "", () => {
+    S.newRole = "helper"
+    void renderDetail()
+  })
+  const create = button(S.newBusy ? t("creating") : t("newSession"), "primary", () => void submitNewSession(task, key, list))
+  create.disabled = S.newBusy
+  const cancel = button(t("cancel"), "", () => {
+    if (S.newBusy) return
+    S.newFor = null
+    void renderDetail()
+  })
+  cancel.disabled = S.newBusy
+  box.append(input, roleMain, roleHelper, create, cancel)
+  setTimeout(() => input.focus(), 0)
+  return box
+}
+
+async function submitNewSession(task, key, list) {
+  if (S.newBusy) return
+  const dir = groupDirectory(list)
+  if (!dir) {
+    toast(t("noDirectory"), "error")
+    return
+  }
+  const taskId = task.id
+  const role = S.newRole
+  const title = String(S.newTitle || "").trim() || key + " - " + t("newSession")
+  S.newBusy = true
+  void renderDetail()
+  const res = await createSessionRequest(dir, title, "")
+  S.newBusy = false
+  if (!res.id) {
+    toast(String(res.error || "ERR"), "error")
+    void renderDetail()
+    return
+  }
+  // 请求在途时用户可能切了任务或取消了表单；成员仍要落到发起时那件任务上。
+  const target = S.tasks.get(taskId) || task
+  target.members = target.members || []
+  const entry = {
+    sessionId: res.id,
+    title,
+    directory: dir.split(/[\\/]/).filter(Boolean).pop() || key,
+    role
+  }
+  target.members.push(entry)
+  try {
+    await persist(target)
+  } catch (error) {
+    // 写盘失败要回滚内存，否则自动刷新会用磁盘副本覆盖掉这条，看起来像「已加过」。
+    // 会话本身已经在引擎里建出来了，所以把 id 留在表单里让用户复制或重试，别清掉。
+    target.members = target.members.filter((m) => m.sessionId !== res.id)
+    S.newCreated = res.id
+    toast(t("orphan") + " \u00b7 " + String((error && error.code) || "ERR"), "error")
+    void renderDetail()
+    return
+  }
+  const stillOpen = S.newFor === key
+  if (stillOpen) {
+    S.newFor = null
+    S.newTitle = ""
+  }
+  S.newCreated = ""
+  render()
+  toast(t("sessionCreated") + (stillOpen ? "" : " " + res.id), "success")
+  if (stillOpen) await gotoSession(res.id)
+}
+
+function groupHeader(task, key, list, hasCoord) {
+  const row = document.createElement("div")
+  row.className = "group" + (hasCoord ? " coord" : "")
+  const open = S.expanded.has(key)
+
+  const caret = document.createElement("span")
+  caret.className = "caret"
+  caret.textContent = open ? "\u25be" : "\u25b8"
+
+  const name = document.createElement("span")
+  name.className = "group-name"
+  name.textContent = key
+  if (hasCoord) {
+    const tag = document.createElement("span")
+    tag.className = "tag coord"
+    tag.textContent = t("coordGroup")
+    name.appendChild(tag)
+  }
+
+  const count = document.createElement("span")
+  count.className = "group-count"
+  const mainCount = list.filter((m) => m.role !== "helper").length
+  const helperCount = list.filter((m) => m.role === "helper").length
+  count.textContent = `${mainCount} ${t("roleMain")} \u00b7 ${helperCount} ${t("roleHelper")}` + (list.length > 3 ? " \u00b7 " + t("overCap") : "")
+  count.classList.toggle("bad", list.length > 3 || mainCount > 1)
+
+  const state = document.createElement("span")
+  state.className = "state"
+  paintGroupState(state, list)
+  S.groupNodes.push({ el: state, list })
+
+  const toggle = document.createElement("button")
+  toggle.type = "button"
+  toggle.className = "group-toggle"
+  toggle.append(caret, name, count, state)
+  toggle.onclick = () => {
+    if (S.expanded.has(key)) S.expanded.delete(key)
+    else S.expanded.add(key)
+    S.newFor = null
+    void renderDetail()
+  }
+
+  // 组里没有可定位的目录时置灰：不拿短名去猜路径建会话。
+  const dir = groupDirectory(list)
+  const add = document.createElement("button")
+  add.type = "button"
+  add.className = "btn accent group-add"
+  add.textContent = "+"
+  add.title = dir ? t("newSession") : t("noDirectory")
+  add.disabled = !dir
+  add.onclick = () => {
+    // 创建中再点会把 newBusy 清掉，等于放开第二次建会话。
+    if (S.newBusy) return
+    // 上一轮建成了但没入册：先让用户复制或关掉，不能被下一次「+」无声清掉。
+    if (S.newCreated) {
+      toast(t("orphan"), "error")
+      return
+    }
+    if (!dir) {
+      toast(t("noDirectory"), "error")
+      return
+    }
+    S.newFor = key
+    S.newTitle = ""
+    S.newRole = "helper"
+    S.newBusy = false
+    S.newCreated = ""
+    S.expanded.add(key)
+    void renderDetail()
+  }
+
+  row.append(toggle, add)
   return row
 }
 
@@ -584,6 +959,7 @@ async function renderDetail() {
   const box = el("detail")
   box.replaceChildren()
   S.stateNodes = []
+  S.groupNodes = []
   const task = currentTask()
   if (!task) {
     const empty = document.createElement("div")
@@ -607,7 +983,7 @@ async function renderDetail() {
   }
   const headActions = document.createElement("span")
   headActions.className = "row-actions"
-  const del = button(S.deleting === task.id ? t("confirm") : t("delete"), S.deleting === task.id ? "danger" : "", () => {
+  const del = button(S.deleting === task.id ? t("confirm") : t("delete"), "danger", () => {
     if (S.deleting !== task.id) {
       S.deleting = task.id
       render()
@@ -622,26 +998,78 @@ async function renderDetail() {
     S.deleting = null
     void removeTask(task.id).then(render)
   })
-  headActions.append(
-    button(t("edit"), "", () => openForm("edit", task)),
-    button(t("addSession"), "", () => void openPicker(task)),
-    del
-  )
+  const moreBtn = button("\u22ef", "", () => {
+    S.headMenu = !S.headMenu
+    void renderDetail()
+  })
+  moreBtn.title = t("actions")
+
   if (task.coordinator) {
-    headActions.prepend(
-      button(t("summarize"), "primary", async () => {
+    headActions.appendChild(
+      button(t("jumpCoord"), "primary", async () => {
         try {
-          await host.openSession(task.coordinator)
-          await host.compose({ text: t("summaryPrompt")(task.title || task.id, task.progressDir || ""), mode: "replace" })
-          toast(t("summaryQueued"), "success")
+          await gotoSession(task.coordinator)
         } catch (error) {
           toast(String((error && error.code) || "ERR"), "error")
         }
       })
     )
   }
+  headActions.append(
+    button(t("addSession"), "accent", () => void openPicker(task)),
+    moreBtn
+  )
   head.appendChild(headActions)
   box.appendChild(head)
+
+  if (S.headMenu) {
+    const menu = document.createElement("div")
+    menu.className = "headmenu"
+    menu.append(
+      button(t("patrol"), "accent", async () => {
+        if (!task.coordinator) {
+          toast(t("noCoord"), "error")
+          return
+        }
+        try {
+          await gotoSession(task.coordinator)
+          await host.compose({ text: t("patrolPrompt")(task.title || task.id, task.progressDir || ""), mode: "replace" })
+          toast(t("summaryQueued"), "success")
+        } catch (error) {
+          toast(String((error && error.code) || "ERR"), "error")
+        }
+      }),
+      button(t("summarize"), "accent", async () => {
+        if (!task.coordinator) {
+          toast(t("noCoord"), "error")
+          return
+        }
+        try {
+          await gotoSession(task.coordinator)
+          await host.compose({ text: t("summaryPrompt")(task.title || task.id, task.progressDir || ""), mode: "replace" })
+          toast(t("summaryQueued"), "success")
+        } catch (error) {
+          toast(String((error && error.code) || "ERR"), "error")
+        }
+      }),
+      button(t("tidyTitles"), "accent", async () => {
+        if (!task.coordinator) {
+          toast(t("noCoord"), "error")
+          return
+        }
+        try {
+          await gotoSession(task.coordinator)
+          await host.compose({ text: t("titlePrompt")(task.title || task.id, task.progressDir || ""), mode: "replace" })
+          toast(t("summaryQueued"), "success")
+        } catch (error) {
+          toast(String((error && error.code) || "ERR"), "error")
+        }
+      }),
+      button(t("edit"), "", () => openForm("edit", task)),
+      del
+    )
+    box.appendChild(menu)
+  }
 
   const prow = document.createElement("div")
   prow.className = "progress"
@@ -690,10 +1118,25 @@ async function renderDetail() {
     warn.textContent = t("noPeers")
     box.appendChild(warn)
   }
-  const grid = document.createElement("div")
-  grid.className = "members"
-  for (const member of members) grid.appendChild(memberRow(task, member))
-  box.appendChild(grid)
+  const groups = groupMembers(members)
+  const entries = [...groups.entries()].map(([key, list]) => {
+    const hasCoord = Boolean(task.coordinator) && list.some((m) => m.sessionId === task.coordinator)
+    const st = groupState(list)
+    const rank = hasCoord ? 0 : st === "running" || st === "running-child" ? 1 : st === "waiting" ? 2 : st === "failed" ? 3 : st === "done" ? 4 : 5
+    return { key, list, hasCoord, rank }
+  })
+  entries.sort((a, b) => a.rank - b.rank)
+  if (S.expanded.size === 0 && entries.length === 1) S.expanded.add(entries[0].key)
+  for (const entry of entries) {
+    const ordered = [...entry.list].sort((a, b) => (b.sessionId === task.coordinator ? 1 : 0) - (a.sessionId === task.coordinator ? 1 : 0))
+    box.appendChild(groupHeader(task, entry.key, entry.list, entry.hasCoord))
+    if (S.newFor === entry.key) box.appendChild(newSessionEditor(task, entry.key, entry.list))
+    if (!S.expanded.has(entry.key)) continue
+    const grid = document.createElement("div")
+    grid.className = "members"
+    for (const member of ordered) grid.appendChild(memberRow(task, member))
+    box.appendChild(grid)
+  }
 }
 
 async function renderFiles(task, box) {
@@ -757,6 +1200,26 @@ async function dropMember(task, sessionId) {
 
 async function setCoordinator(task, sessionId) {
   task.coordinator = sessionId
+  await persist(task)
+  render()
+}
+
+async function setRole(task, sessionId, role) {
+  const member = (task.members || []).find((m) => m.sessionId === sessionId)
+  if (!member) return
+  member.role = role
+  await persist(task)
+  render()
+}
+
+async function setAlias(task, sessionId, value) {
+  const member = (task.members || []).find((m) => m.sessionId === sessionId)
+  if (!member) return
+  const text = String(value || "").trim()
+  if (text) member.alias = text
+  else delete member.alias
+  S.renaming = null
+  S.openMenu = null
   await persist(task)
   render()
 }
@@ -920,19 +1383,27 @@ async function autoTick() {
   await loadAll()
 }
 
-function toggleAuto() {
+function setAuto(on) {
   const btn = el("auto")
-  if (S.auto) {
+  if (on && !S.auto) {
+    S.auto = setInterval(() => void autoTick(), AUTO_MS)
+    btn.classList.add("active")
+    btn.textContent = t("auto")
+    void autoTick()
+    return
+  }
+  if (!on && S.auto) {
     clearInterval(S.auto)
     S.auto = 0
     btn.classList.remove("active")
     btn.textContent = t("auto")
-    return
   }
-  S.auto = setInterval(() => void autoTick(), AUTO_MS)
-  btn.classList.add("active")
-  btn.textContent = t("auto") + " \u00b7 " + t("on")
-  void autoTick()
+}
+
+function toggleAuto() {
+  const next = !S.auto
+  setAuto(next)
+  host.storage.set(AUTO_KEY, next).catch(() => {})
 }
 
 host.onReady((ctx) => {
@@ -947,7 +1418,7 @@ host.onReady((ctx) => {
   el("app-title").textContent = t("tasks")
   el("new").textContent = t("newTask")
   el("refresh").textContent = t("refresh")
-  el("auto").textContent = S.auto ? t("auto") + " \u00b7 " + t("on") : t("auto")
+  el("auto").textContent = t("auto")
   el("search").placeholder = t("search")
   el("sort-label").textContent = t("sort")
   el("sort").options[0].textContent = t("manual")
@@ -965,7 +1436,7 @@ host.onReady((ctx) => {
   if (S.mounted) return
   S.mounted = true
   if (!S.ticker) S.ticker = setInterval(tickStates, 1000)
-  el("refresh").onclick = () => void loadAll()
+  el("refresh").onclick = () => void loadAll(true)
   el("search-toggle").onclick = () => {
     const top = document.querySelector(".top")
     if (!top) return
@@ -990,4 +1461,10 @@ host.onReady((ctx) => {
     render()
   }
   void loadAll()
+  void host.storage
+    .get(AUTO_KEY)
+    .then((value) => {
+      if (value === undefined || value === true) setAuto(true)
+    })
+    .catch(() => setAuto(true))
 })

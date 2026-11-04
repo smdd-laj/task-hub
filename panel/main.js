@@ -1764,6 +1764,7 @@ ${GUEST_UI_LOOK_CSS}`;
   var DEFAULT_ROOT = "~/.task-hub";
   var FILE_TASKS = "~/.task-hub/tasks.json";
   var FILE_SETTINGS = "~/.task-hub/settings.json";
+  var AUTO_KEY = "taskhub.auto";
   var AUTO_MS = 1500;
   var DICT = {
     en: {
@@ -1799,10 +1800,37 @@ ${GUEST_UI_LOOK_CSS}`;
       unknown: "\u2014",
       lastTurn: "last",
       done: "done",
+      noFolder: "no folder",
+      roleMain: "main",
+      roleHelper: "helper",
+      roleNone: "unset",
+      actions: "Actions",
+      setMain: "Make main",
+      setHelper: "Make helper",
+      fillHelpers: "Fill helpers",
+      overCap: "over 3",
+      noCoord: "No coordinator set",
+      copyId: "Copy id",
+      alias: "Display name",
+      setAlias: "Rename",
+      tidyTitles: "Tidy titles",
+      newSession: "New session",
+      newSessionTitle: "Session name",
+      newSessionRole: "Role",
+      noDirectory: "This group has no absolute path to create in",
+      sessionCreated: "Session created",
+      creating: "Creating",
+      orphan: "Created but not saved to the roster",
+      fillPrompt: (title, dir, member) => 'For task "' + title + '" add helper sessions for the worktree of "' + member + '". Read ' + dir + ` first. Keep each worktree to at most three sessions: one main line plus up to two helpers for small jobs such as reading code, checking a fact, or a quick question. If that worktree has no helper yet, create one with session.create in the same directory, give it a title naming the worktree and the purpose, and send one short first message: task name, progress folder, its own progress-<last 6 of its id>.md, and what to do. Register it in tasks.json members with role: "helper" and log it in that worktree's .dispatch.json. If it already has three, say which ones to merge or close instead. Start every message with your own role (main or helper).`,
+      patrol: "Run a patrol",
+      patrolPrompt: (title, dir) => 'Run one patrol round for task "' + title + '" as the coordinator. Read C:\\Users\\HUAWEI\\.task-hub\\tasks.json and ' + dir + ', then SUMMARY.md and the progress-*.md that changed this round. Sort every member into running / can-advance / needs-user / done. Send only the can-advance ones a four-part message (new info / one checkable action / stop condition / which file to write, with \u3010\u56DE\u8BDD\u3011 and returnResult). Append sourced conclusions to SUMMARY.md. Ask me only on hard boundaries (production change, deleting data, merging master or release, messaging outside systems); settle wording and implementation choices from the records yourself and say what you decided. Report every member as "name + full session id".',
       summarize: "Ask coordinator",
+      jumpCoord: "Open coordinator",
       summaryQueued: "Switched to the coordinator, prompt is in its chat box",
       summaryPrompt: (title, dir) => 'Summarize task "' + title + '" now. Read ' + dir + "/SUMMARY.md and every progress-*.md, then answer in six parts: 1) one-line status, 2) done, 3) in progress, 4) blocked / waiting on whom, 5) pitfalls hit so far with where they live, 6) next three actions. Append settled conclusions to SUMMARY.md with their source; leave open items in the progress files.",
+      titlePrompt: (title, dir) => 'Tidy the session names for task "' + title + '". Read tasks.json and ' + dir + ', then for every member set alias to "<short project> - <what it is doing now>": take the short project name from its worktree or directory (for example \u5FAE\u670D\u52A1, \u6536\u94F6\u540E\u7AEF, goframe, cashier, H5), and describe the current concrete job from the newest progress file rather than the opening greeting. Rename the session itself with session_rename when you are sure; skip when the evidence is thin and list those instead. Write the result back to tasks.json and report each change as old -> new with the reason.',
       coord: "coordinator",
+      coordGroup: "coordinator here",
       setCoord: "Make coordinator",
       clearCoord: "Unset coordinator",
       compose: "To chat box",
@@ -1864,11 +1892,38 @@ ${GUEST_UI_LOOK_CSS}`;
       unknown: "\u2014",
       lastTurn: "\u4E0A\u8F6E",
       done: "\u5B8C\u6210",
+      noFolder: "\u65E0\u76EE\u5F55",
+      roleMain: "\u4E3B\u7EBF",
+      roleHelper: "\u8F85\u52A9",
+      roleNone: "\u672A\u6807",
+      actions: "\u64CD\u4F5C",
+      setMain: "\u8BBE\u4E3A\u4E3B\u7EBF",
+      setHelper: "\u8BBE\u4E3A\u8F85\u52A9",
+      fillHelpers: "\u8865\u5145\u770B\u677F\u4F1A\u8BDD",
+      overCap: "\u8D85\u8FC7\u4E09\u4E2A",
+      noCoord: "\u8FD9\u4EF6\u4EFB\u52A1\u8FD8\u6CA1\u8BBE\u534F\u8C03\u4F1A\u8BDD",
+      copyId: "\u590D\u5236\u4F1A\u8BDD id",
+      alias: "\u663E\u793A\u540D",
+      setAlias: "\u6539\u6807\u9898",
+      tidyTitles: "\u8BA9\u534F\u8C03\u6574\u7406\u6807\u9898",
+      newSession: "\u65B0\u4F1A\u8BDD",
+      newSessionTitle: "\u4F1A\u8BDD\u540D",
+      newSessionRole: "\u89D2\u8272",
+      noDirectory: "\u8FD9\u4E00\u7EC4\u62FF\u4E0D\u5230\u7EDD\u5BF9\u8DEF\u5F84\uFF0C\u4E0D\u80FD\u5EFA\u4F1A\u8BDD",
+      sessionCreated: "\u5DF2\u5EFA\u4F1A\u8BDD",
+      creating: "\u521B\u5EFA\u4E2D",
+      orphan: "\u4F1A\u8BDD\u5DF2\u5EFA\uFF0C\u4F46\u6CA1\u5199\u8FDB\u540D\u518C",
+      fillPrompt: (title, dir, member) => "\u9488\u5BF9\u4EFB\u52A1\u300C" + title + "\u300D\uFF0C\u7ED9\u300C" + member + "\u300D\u6240\u5728\u7684 worktree \u8865\u5145\u8F85\u52A9\u4F1A\u8BDD\u3002\u5148\u8BFB " + dir + '\u3002\u6BCF\u4E2A worktree \u6700\u591A\u4E09\u4E2A\u4F1A\u8BDD\uFF1A\u4E00\u4E2A\u4E3B\u7EBF\u63A8\u8FDB\u4F1A\u8BDD\uFF0C\u53E6\u6709\u81F3\u591A\u4E24\u4E2A\u8F85\u52A9\u4F1A\u8BDD\uFF0C\u4E13\u95E8\u505A\u67E5\u4EE3\u7801\u3001\u6838\u4E8B\u5B9E\u3001\u5C0F\u95EE\u8BE2\u8FD9\u7C7B\u5C0F\u6D3B\u3002\u5982\u679C\u90A3\u4E2A worktree \u8FD8\u6CA1\u6709\u8F85\u52A9\u4F1A\u8BDD\uFF0C\u7528 session.create \u5728\u5B83\u7684\u540C\u76EE\u5F55\u5EFA\u4E00\u4E2A\uFF1A\u6807\u9898\u5199\u660E worktree \u540D\u548C\u7528\u9014\uFF1B\u9996\u6761\u6D88\u606F\u53EA\u5199\u56DB\u6837\u2014\u2014\u4EFB\u52A1\u540D\u3001\u8FDB\u5EA6\u76EE\u5F55\u3001\u5B83\u81EA\u5DF1\u7684 progress-<id\u540E6\u4F4D>.md\u3001\u8981\u5B83\u505A\u4EC0\u4E48\u3002\u5EFA\u5B8C\u5199\u8FDB tasks.json \u7684 members\uFF0C\u5E26 role: "helper"\uFF0C\u5E76\u5728\u8BE5 worktree \u7684 .dispatch.json \u8BB0\u4E00\u884C\u3002\u5DF2\u7ECF\u6EE1\u4E09\u4E2A\u7684\uFF0C\u8BF4\u660E\u54EA\u4E9B\u8BE5\u5408\u5E76\u6216\u7ED3\u675F\uFF0C\u4E0D\u8981\u518D\u52A0\u3002\u4F60\u53D1\u51FA\u7684\u6BCF\u6761\u6D88\u606F\u7B2C\u4E00\u884C\u5199\u660E\u81EA\u5DF1\u7684\u89D2\u8272\uFF08\u4E3B\u7EBF\u6216\u8F85\u52A9\uFF09\u3002',
+      patrol: "\u8BA9\u534F\u8C03\u5DE1\u68C0",
+      patrolPrompt: (title, dir) => "\u73B0\u5728\u6309\u4FE1\u7BB1\u8C03\u5EA6\u8DD1\u4E00\u8F6E\u5DE1\u68C0\u4EFB\u52A1\u300C" + title + "\u300D\u3002\u5148\u8BFB C:\\Users\\HUAWEI\\.task-hub\\tasks.json \u548C " + dir + "\uFF0C\u518D\u8BFB SUMMARY.md \u4E0E\u672C\u8F6E\u6709\u53D8\u5316\u7684 progress-*.md\u3002\u5BF9\u6BCF\u4E2A\u6210\u5458\u5206\u5728\u8DD1 / \u53EF\u63A8\u8FDB / \u7B49\u4F60\u5B9A / \u5DF2\u5B8C\u6210\uFF1B\u53EA\u7ED9\u53EF\u63A8\u8FDB\u7684\u53D1\u4E00\u6761\u56DB\u6BB5\u5F0F\u6D88\u606F\uFF08\u65B0\u4FE1\u606F / \u4E00\u4E2A\u53EF\u9A8C\u6536\u52A8\u4F5C / \u505C\u6B62\u6761\u4EF6 / \u5199\u56DE\u8DEF\u5F84\uFF0C\u5E26\u3010\u56DE\u8BDD\u3011\u548C returnResult\uFF09\uFF1B\u6709\u51FA\u5904\u7684\u7ED3\u8BBA\u5199\u8FDB SUMMARY.md\uFF1B\u547D\u4E2D\u786C\u8FB9\u754C\uFF08\u751F\u4EA7\u6539\u52A8\u3001\u5220\u6570\u636E\u3001\u5408\u5E76 master \u6216 release\u3001\u5BF9\u5916\u53D1\u6D88\u606F\uFF09\u624D\u95EE\u6211\uFF0C\u53E3\u5F84\u4E0E\u5B9E\u73B0\u9009\u62E9\u6309\u8BB0\u5F55\u81EA\u5DF1\u5B9A\u5E76\u5199\u660E\u4F9D\u636E\u3002\u6210\u5458\u4E00\u5F8B\u62A5\u300C\u540D\u79F0 + \u5B8C\u6574 session id\u300D\u3002",
       summarize: "\u8BA9\u534F\u8C03\u603B\u7ED3",
+      jumpCoord: "\u8DF3\u5230\u534F\u8C03",
       summaryQueued: "\u5DF2\u5207\u5230\u534F\u8C03\u4F1A\u8BDD\uFF0C\u63D0\u793A\u8BCD\u5728\u5B83\u7684\u8F93\u5165\u6846\u91CC",
       summaryPrompt: (title, dir) => "\u73B0\u5728\u603B\u7ED3\u4EFB\u52A1\u300C" + title + "\u300D\u3002\u5148\u8BFB " + dir + "/SUMMARY.md \u548C\u6240\u6709 progress-*.md\uFF0C\u7136\u540E\u6309\u516D\u6BB5\u56DE\u7B54\uFF1A1) \u4E00\u53E5\u8BDD\u73B0\u72B6 2) \u5DF2\u5B8C\u6210 3) \u8FDB\u884C\u4E2D 4) \u5361\u4F4F\u7684\u5730\u65B9\u4E0E\u5728\u7B49\u8C01 5) \u5DF2\u7ECF\u8E29\u8FC7\u7684\u5751\u53CA\u5404\u81EA\u4F4D\u7F6E 6) \u63A5\u4E0B\u6765\u4E09\u6B65\u3002\u628A\u5DF2\u5B9A\u7684\u7ED3\u8BBA\u5E26\u51FA\u5904\u8FFD\u52A0\u8FDB SUMMARY.md\uFF0C\u672A\u5B9A\u7684\u7559\u5728\u5404 progress \u6587\u4EF6\u91CC\u3002",
+      titlePrompt: (title, dir) => "\u6574\u7406\u4EFB\u52A1\u300C" + title + "\u300D\u4E0B\u6240\u6709\u4F1A\u8BDD\u7684\u540D\u5B57\u3002\u5148\u8BFB tasks.json \u548C " + dir + "\u3002\u5BF9\u6BCF\u4E2A\u6210\u5458\uFF0C\u628A alias \u8BBE\u6210\u300C\u9879\u76EE\u7B80\u79F0 - \u73B0\u5728\u5728\u505A\u4EC0\u4E48\u300D\uFF1A\u9879\u76EE\u7B80\u79F0\u53D6\u5B83\u6240\u5728 worktree \u6216\u76EE\u5F55\u540D\uFF08\u4F8B\u5982 \u5FAE\u670D\u52A1\u3001\u6536\u94F6\u540E\u7AEF\u3001goframe\u3001cashier\u3001H5\uFF09\uFF0C\u5177\u4F53\u4EFB\u52A1\u4ECE\u6700\u65B0\u7684 progress \u6587\u4EF6\u91CC\u770B\uFF0C\u4E0D\u8981\u7167\u6284\u6807\u9898\u5F00\u5934\u90A3\u53E5\u95EE\u5019\u3002\u6709\u628A\u63E1\u65F6\u7528 session_rename \u628A\u4F1A\u8BDD\u672C\u4F53\u4E5F\u6539\u6210\u540C\u6837\u7684\u540D\u5B57\uFF1B\u8BC1\u636E\u4E0D\u8DB3\u7684\u8DF3\u8FC7\u5E76\u5728\u56DE\u62A5\u91CC\u5217\u51FA\u6765\u3002\u6539\u5B8C\u5199\u56DE tasks.json\uFF0C\u5E76\u628A\u6BCF\u5904\u6539\u52A8\u4EE5\u300C\u65E7\u540D \u2192 \u65B0\u540D\uFF08\u4F9D\u636E\uFF09\u300D\u5217\u7ED9\u6211\u3002",
       coord: "\u534F\u8C03",
-      setCoord: "\u8BBE\u4E3A\u534F\u8C03",
+      coordGroup: "\u534F\u8C03\u6240\u5728",
+      setCoord: "\u6807\u8BC6\u534F\u8C03\u4F1A\u8BDD",
       clearCoord: "\u53D6\u6D88\u534F\u8C03",
       compose: "\u653E\u5165\u804A\u5929\u6846",
       composed: "\u5DF2\u653E\u5165\u804A\u5929\u6846\uFF0C\u786E\u8BA4\u540E\u81EA\u5DF1\u53D1\u9001",
@@ -1912,6 +1967,11 @@ ${GUEST_UI_LOOK_CSS}`;
     subscribed: /* @__PURE__ */ new Set(),
     since: /* @__PURE__ */ new Map(),
     stateNodes: [],
+    groupNodes: [],
+    expanded: /* @__PURE__ */ new Set(),
+    openMenu: null,
+    headMenu: false,
+    renaming: null,
     lastKey: "",
     ticker: 0,
     loc: "en",
@@ -1922,6 +1982,11 @@ ${GUEST_UI_LOOK_CSS}`;
     pickQ: "",
     pickRows: [],
     pickProjects: 0,
+    newFor: null,
+    newTitle: "",
+    newRole: "helper",
+    newBusy: false,
+    newCreated: "",
     deleting: null,
     deleteTimer: 0,
     dragId: null
@@ -1936,6 +2001,7 @@ ${GUEST_UI_LOOK_CSS}`;
   }
   function tickStates() {
     for (const item of S.stateNodes) renderState(item.el, item.member);
+    for (const item of S.groupNodes) paintGroupState(item.el, item.list);
   }
   async function readJson(path, fallback) {
     try {
@@ -2160,22 +2226,41 @@ ${GUEST_UI_LOOK_CSS}`;
     if (!S.since.has(member.sessionId)) S.since.set(member.sessionId, Date.now());
     return Date.now() - S.since.get(member.sessionId);
   }
-  async function serviceStates(ids) {
-    if (!ids.length || typeof host.serviceRequest !== "function") return null;
+  async function createSessionRequest(directory, title, agent) {
+    if (typeof host.serviceRequest !== "function") return { id: "", error: "no-service-api" };
     try {
+      const res = await host.serviceRequest({
+        method: "POST",
+        path: "/createSession",
+        body: { directory, title, agent }
+      });
+      const text = typeof res?.body === "string" ? res.body : "";
+      const data = text ? JSON.parse(text) : null;
+      if (data && data.sessionId) return { id: String(data.sessionId), error: "" };
+      return { id: "", error: data && data.error || "empty" };
+    } catch (error) {
+      return { id: "", error: String(error && error.code || error && error.message || "ERR") };
+    }
+  }
+  async function serviceStates(ids, force) {
+    if (!ids.length) return { data: null, error: "" };
+    if (typeof host.serviceRequest !== "function") return { data: null, error: "no-service-api" };
+    try {
+      const query = { ids: ids.join(",") };
+      if (force) query.force = "1";
       const res = await host.serviceRequest({
         method: "GET",
         path: "/states",
-        query: { ids: ids.join(",") }
+        query
       });
       const text = typeof res?.body === "string" ? res.body : null;
-      if (!text) return null;
-      return JSON.parse(text);
-    } catch {
-      return null;
+      if (!text) return { data: null, error: "empty" };
+      return { data: JSON.parse(text), error: "" };
+    } catch (error) {
+      return { data: null, error: String(error && error.code || error && error.message || "ERR") };
     }
   }
-  async function loadAll() {
+  async function loadAll(force = false) {
     try {
       S.settings = await readSettings();
       const list = await readTasks();
@@ -2188,7 +2273,8 @@ ${GUEST_UI_LOOK_CSS}`;
       for (const task of S.tasks.values()) {
         for (const member of task.members || []) wanted.add(member.sessionId);
       }
-      const over = await serviceStates([...wanted]);
+      const svc = await serviceStates([...wanted], force);
+      const over = svc.data ? svc.data.states : null;
       S.service = /* @__PURE__ */ new Map();
       if (over) {
         for (const [id, state] of Object.entries(over)) {
@@ -2202,7 +2288,7 @@ ${GUEST_UI_LOOK_CSS}`;
           S.live.set(id, current);
         }
       }
-      el2("status").textContent = "";
+      el2("status").textContent = svc.error ? "svc:" + svc.error : "";
       const key = JSON.stringify(list.map((task) => [task.id, task.title, task.progressDir, task.coordinator, (task.members || []).map((m) => [m.sessionId, m.title])]));
       if (key !== S.lastKey) {
         S.lastKey = key;
@@ -2237,6 +2323,15 @@ ${GUEST_UI_LOOK_CSS}`;
   function currentTask() {
     const list = visibleTasks();
     return list.find((task) => task.id === S.selected) || list[0] || null;
+  }
+  async function gotoSession(sessionId) {
+    await host.openSession(sessionId);
+    if (typeof host.openSurface === "function") {
+      const open = () => host.openSurface("plugin:task-hub").catch(() => {
+      });
+      void open();
+      setTimeout(() => void open(), 500);
+    }
   }
   function isMine(task) {
     return Boolean(S.me) && (task.members || []).some((member) => member.sessionId === S.me);
@@ -2280,6 +2375,7 @@ ${GUEST_UI_LOOK_CSS}`;
       item.onclick = () => {
         S.selected = task.id;
         S.deleting = null;
+        S.newFor = null;
         render();
       };
       box.appendChild(item);
@@ -2327,7 +2423,7 @@ ${GUEST_UI_LOOK_CSS}`;
     const nameBtn = document.createElement("button");
     nameBtn.type = "button";
     nameBtn.className = "link";
-    nameBtn.textContent = live && live.title || member.title || member.sessionId.slice(-6);
+    nameBtn.textContent = member.alias || live && live.title || member.title || member.sessionId.slice(-6);
     if (!live) {
       nameBtn.disabled = true;
       nameBtn.title = t("gone");
@@ -2335,7 +2431,7 @@ ${GUEST_UI_LOOK_CSS}`;
       nameBtn.title = t("open");
       nameBtn.onclick = async () => {
         try {
-          await host.openSession(member.sessionId);
+          await gotoSession(member.sessionId);
         } catch (error) {
           toast(String(error && error.code || "ERR"), "error");
         }
@@ -2346,6 +2442,13 @@ ${GUEST_UI_LOOK_CSS}`;
       const tag = document.createElement("span");
       tag.className = "tag coord";
       tag.textContent = t("coord");
+      title.appendChild(tag);
+    }
+    const role = member.role === "main" || member.role === "helper" ? member.role : "";
+    {
+      const tag = document.createElement("span");
+      tag.className = "tag role-" + (role || "none");
+      tag.textContent = role ? t(role === "main" ? "roleMain" : "roleHelper") : t("roleNone");
       title.appendChild(tag);
     }
     if (member.sessionId === S.me) {
@@ -2375,17 +2478,291 @@ ${GUEST_UI_LOOK_CSS}`;
     const actions = document.createElement("span");
     actions.className = "row-actions";
     const isCoord = task.coordinator === member.sessionId;
-    actions.append(
-      button2(isCoord ? "\u2605" : "\u2606", isCoord ? "primary" : "", () => void setCoordinator(task, isCoord ? null : member.sessionId)),
-      button2(t("remove"), "", () => void dropMember(task, member.sessionId))
-    );
+    const roleNow = member.role === "helper" ? "helper" : "main";
+    const marker = button2("\u22EF", isCoord ? "primary" : "", () => {
+      S.openMenu = S.openMenu === member.sessionId ? null : member.sessionId;
+      void renderDetail();
+    });
+    marker.title = t("actions");
+    actions.append(marker);
+    const cell = document.createElement("div");
+    cell.className = "cell";
+    cell.appendChild(row);
     row.append(handle, info, state, actions);
+    if (S.renaming === member.sessionId) {
+      const editor = document.createElement("div");
+      editor.className = "menu";
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "rename";
+      input.value = member.alias || member.title || "";
+      input.placeholder = t("alias");
+      const save = button2(t("save"), "primary", () => void setAlias(task, member.sessionId, input.value));
+      const cancel = button2(t("cancel"), "", () => {
+        S.renaming = null;
+        void renderDetail();
+      });
+      editor.append(input, save, cancel);
+      cell.appendChild(editor);
+      setTimeout(() => input.focus(), 0);
+      return cell;
+    }
+    if (S.openMenu === member.sessionId) {
+      const box = document.createElement("div");
+      box.className = "menu";
+      box.append(
+        button2(t("setAlias"), "accent", () => {
+          S.renaming = member.sessionId;
+          void renderDetail();
+        }),
+        button2(t("copyId"), "accent", async () => {
+          try {
+            await host.writeClipboard(member.sessionId);
+            toast(t("copyDone"), "success");
+          } catch (error) {
+            toast(String(error && error.code || "ERR"), "error");
+          }
+        }),
+        button2(t("remove"), "danger", () => void dropMember(task, member.sessionId)),
+        button2(isCoord ? t("clearCoord") : t("setCoord"), "accent", () => void setCoordinator(task, isCoord ? null : member.sessionId)),
+        button2(t("setMain"), roleNow === "main" ? "primary" : "", () => void setRole(task, member.sessionId, "main")),
+        button2(t("setHelper"), roleNow === "helper" ? "primary" : "", () => void setRole(task, member.sessionId, "helper")),
+        button2(t("fillHelpers"), "accent", async () => {
+          try {
+            await gotoSession(member.sessionId);
+            await host.compose({
+              text: t("fillPrompt")(task.title || task.id, task.progressDir || "", member.title || member.sessionId.slice(-6)),
+              mode: "replace"
+            });
+            toast(t("summaryQueued"), "success");
+          } catch (error) {
+            toast(String(error && error.code || "ERR"), "error");
+          }
+        })
+      );
+      cell.appendChild(box);
+    }
+    return cell;
+  }
+  function groupMembers(members) {
+    const groups = /* @__PURE__ */ new Map();
+    for (const member of members) {
+      const live = liveOf(member);
+      const dir = live && live.directory || member.directory || "";
+      const key = dir ? dir.split(/[\\/]/).filter(Boolean).pop() : t("noFolder");
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(member);
+    }
+    return groups;
+  }
+  function groupState(list) {
+    const states = list.map((member) => stateOf(member));
+    if (states.includes("running") || states.includes("running-child")) return "running";
+    if (states.includes("waiting")) return "waiting";
+    if (states.includes("failed")) return "failed";
+    if (states.every((s) => s === "done")) return "done";
+    if (states.every((s) => s === "idle" || s === "done")) return "idle";
+    return "unknown";
+  }
+  function paintGroupState(el3, list) {
+    const value = groupState(list);
+    el3.dataset.state = value;
+    el3.replaceChildren();
+    const icon2 = document.createElement("span");
+    icon2.className = "state-icon";
+    if (value === "running" || value === "running-child") {
+      const spin = document.createElement("span");
+      spin.className = "spin";
+      icon2.appendChild(spin);
+    } else {
+      icon2.textContent = STATE_ICON[value] || STATE_ICON.unknown;
+    }
+    const text = document.createElement("span");
+    text.className = "state-time";
+    text.textContent = value === "running" || value === "running-child" ? t("running") : t(value) || "";
+    el3.append(icon2, text);
+  }
+  function groupDirectory(list) {
+    const dirs = [];
+    let opaque = 0;
+    for (const member of list) {
+      const live = S.live.get(member.sessionId);
+      const dir = String(live && live.directory || "");
+      if (/^[A-Za-z]:[\\/]/.test(dir) || dir.startsWith("/")) {
+        if (!dirs.includes(dir)) dirs.push(dir);
+        continue;
+      }
+      if (live && dir) opaque++;
+    }
+    return dirs.length === 1 && opaque === 0 ? dirs[0] : "";
+  }
+  function newSessionEditor(task, key, list) {
+    const box = document.createElement("div");
+    box.className = "menu new-session";
+    if (S.newCreated) {
+      const note = document.createElement("div");
+      note.className = "orphan";
+      note.textContent = t("orphan") + " \xB7 " + S.newCreated;
+      const copy = button2(t("copyId"), "accent", async () => {
+        try {
+          await host.writeClipboard(S.newCreated);
+          toast(t("copyDone"), "success");
+        } catch (error) {
+          toast(String(error && error.code || "ERR"), "error");
+        }
+      });
+      const close = button2(t("cancel"), "", () => {
+        S.newCreated = "";
+        S.newFor = null;
+        void renderDetail();
+      });
+      box.append(note, copy, close);
+      return box;
+    }
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "rename";
+    input.placeholder = t("newSessionTitle");
+    input.value = S.newTitle;
+    input.oninput = () => {
+      S.newTitle = input.value;
+    };
+    const roleMain = button2(t("roleMain"), S.newRole === "main" ? "primary" : "", () => {
+      S.newRole = "main";
+      void renderDetail();
+    });
+    const roleHelper = button2(t("roleHelper"), S.newRole === "helper" ? "primary" : "", () => {
+      S.newRole = "helper";
+      void renderDetail();
+    });
+    const create = button2(S.newBusy ? t("creating") : t("newSession"), "primary", () => void submitNewSession(task, key, list));
+    create.disabled = S.newBusy;
+    const cancel = button2(t("cancel"), "", () => {
+      if (S.newBusy) return;
+      S.newFor = null;
+      void renderDetail();
+    });
+    cancel.disabled = S.newBusy;
+    box.append(input, roleMain, roleHelper, create, cancel);
+    setTimeout(() => input.focus(), 0);
+    return box;
+  }
+  async function submitNewSession(task, key, list) {
+    if (S.newBusy) return;
+    const dir = groupDirectory(list);
+    if (!dir) {
+      toast(t("noDirectory"), "error");
+      return;
+    }
+    const taskId = task.id;
+    const role = S.newRole;
+    const title = String(S.newTitle || "").trim() || key + " - " + t("newSession");
+    S.newBusy = true;
+    void renderDetail();
+    const res = await createSessionRequest(dir, title, "");
+    S.newBusy = false;
+    if (!res.id) {
+      toast(String(res.error || "ERR"), "error");
+      void renderDetail();
+      return;
+    }
+    const target = S.tasks.get(taskId) || task;
+    target.members = target.members || [];
+    const entry = {
+      sessionId: res.id,
+      title,
+      directory: dir.split(/[\\/]/).filter(Boolean).pop() || key,
+      role
+    };
+    target.members.push(entry);
+    try {
+      await persist(target);
+    } catch (error) {
+      target.members = target.members.filter((m) => m.sessionId !== res.id);
+      S.newCreated = res.id;
+      toast(t("orphan") + " \xB7 " + String(error && error.code || "ERR"), "error");
+      void renderDetail();
+      return;
+    }
+    const stillOpen = S.newFor === key;
+    if (stillOpen) {
+      S.newFor = null;
+      S.newTitle = "";
+    }
+    S.newCreated = "";
+    render();
+    toast(t("sessionCreated") + (stillOpen ? "" : " " + res.id), "success");
+    if (stillOpen) await gotoSession(res.id);
+  }
+  function groupHeader(task, key, list, hasCoord) {
+    const row = document.createElement("div");
+    row.className = "group" + (hasCoord ? " coord" : "");
+    const open = S.expanded.has(key);
+    const caret = document.createElement("span");
+    caret.className = "caret";
+    caret.textContent = open ? "\u25BE" : "\u25B8";
+    const name = document.createElement("span");
+    name.className = "group-name";
+    name.textContent = key;
+    if (hasCoord) {
+      const tag = document.createElement("span");
+      tag.className = "tag coord";
+      tag.textContent = t("coordGroup");
+      name.appendChild(tag);
+    }
+    const count = document.createElement("span");
+    count.className = "group-count";
+    const mainCount = list.filter((m) => m.role !== "helper").length;
+    const helperCount = list.filter((m) => m.role === "helper").length;
+    count.textContent = `${mainCount} ${t("roleMain")} \xB7 ${helperCount} ${t("roleHelper")}` + (list.length > 3 ? " \xB7 " + t("overCap") : "");
+    count.classList.toggle("bad", list.length > 3 || mainCount > 1);
+    const state = document.createElement("span");
+    state.className = "state";
+    paintGroupState(state, list);
+    S.groupNodes.push({ el: state, list });
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "group-toggle";
+    toggle.append(caret, name, count, state);
+    toggle.onclick = () => {
+      if (S.expanded.has(key)) S.expanded.delete(key);
+      else S.expanded.add(key);
+      S.newFor = null;
+      void renderDetail();
+    };
+    const dir = groupDirectory(list);
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "btn accent group-add";
+    add.textContent = "+";
+    add.title = dir ? t("newSession") : t("noDirectory");
+    add.disabled = !dir;
+    add.onclick = () => {
+      if (S.newBusy) return;
+      if (S.newCreated) {
+        toast(t("orphan"), "error");
+        return;
+      }
+      if (!dir) {
+        toast(t("noDirectory"), "error");
+        return;
+      }
+      S.newFor = key;
+      S.newTitle = "";
+      S.newRole = "helper";
+      S.newBusy = false;
+      S.newCreated = "";
+      S.expanded.add(key);
+      void renderDetail();
+    };
+    row.append(toggle, add);
     return row;
   }
   async function renderDetail() {
     const box = el2("detail");
     box.replaceChildren();
     S.stateNodes = [];
+    S.groupNodes = [];
     const task = currentTask();
     if (!task) {
       const empty = document.createElement("div");
@@ -2408,7 +2785,7 @@ ${GUEST_UI_LOOK_CSS}`;
     }
     const headActions = document.createElement("span");
     headActions.className = "row-actions";
-    const del = button2(S.deleting === task.id ? t("confirm") : t("delete"), S.deleting === task.id ? "danger" : "", () => {
+    const del = button2(S.deleting === task.id ? t("confirm") : t("delete"), "danger", () => {
       if (S.deleting !== task.id) {
         S.deleting = task.id;
         render();
@@ -2423,26 +2800,76 @@ ${GUEST_UI_LOOK_CSS}`;
       S.deleting = null;
       void removeTask(task.id).then(render);
     });
-    headActions.append(
-      button2(t("edit"), "", () => openForm("edit", task)),
-      button2(t("addSession"), "", () => void openPicker(task)),
-      del
-    );
+    const moreBtn = button2("\u22EF", "", () => {
+      S.headMenu = !S.headMenu;
+      void renderDetail();
+    });
+    moreBtn.title = t("actions");
     if (task.coordinator) {
-      headActions.prepend(
-        button2(t("summarize"), "primary", async () => {
+      headActions.appendChild(
+        button2(t("jumpCoord"), "primary", async () => {
           try {
-            await host.openSession(task.coordinator);
-            await host.compose({ text: t("summaryPrompt")(task.title || task.id, task.progressDir || ""), mode: "replace" });
-            toast(t("summaryQueued"), "success");
+            await gotoSession(task.coordinator);
           } catch (error) {
             toast(String(error && error.code || "ERR"), "error");
           }
         })
       );
     }
+    headActions.append(
+      button2(t("addSession"), "accent", () => void openPicker(task)),
+      moreBtn
+    );
     head.appendChild(headActions);
     box.appendChild(head);
+    if (S.headMenu) {
+      const menu = document.createElement("div");
+      menu.className = "headmenu";
+      menu.append(
+        button2(t("patrol"), "accent", async () => {
+          if (!task.coordinator) {
+            toast(t("noCoord"), "error");
+            return;
+          }
+          try {
+            await gotoSession(task.coordinator);
+            await host.compose({ text: t("patrolPrompt")(task.title || task.id, task.progressDir || ""), mode: "replace" });
+            toast(t("summaryQueued"), "success");
+          } catch (error) {
+            toast(String(error && error.code || "ERR"), "error");
+          }
+        }),
+        button2(t("summarize"), "accent", async () => {
+          if (!task.coordinator) {
+            toast(t("noCoord"), "error");
+            return;
+          }
+          try {
+            await gotoSession(task.coordinator);
+            await host.compose({ text: t("summaryPrompt")(task.title || task.id, task.progressDir || ""), mode: "replace" });
+            toast(t("summaryQueued"), "success");
+          } catch (error) {
+            toast(String(error && error.code || "ERR"), "error");
+          }
+        }),
+        button2(t("tidyTitles"), "accent", async () => {
+          if (!task.coordinator) {
+            toast(t("noCoord"), "error");
+            return;
+          }
+          try {
+            await gotoSession(task.coordinator);
+            await host.compose({ text: t("titlePrompt")(task.title || task.id, task.progressDir || ""), mode: "replace" });
+            toast(t("summaryQueued"), "success");
+          } catch (error) {
+            toast(String(error && error.code || "ERR"), "error");
+          }
+        }),
+        button2(t("edit"), "", () => openForm("edit", task)),
+        del
+      );
+      box.appendChild(menu);
+    }
     const prow = document.createElement("div");
     prow.className = "progress";
     const plabel = document.createElement("span");
@@ -2488,10 +2915,25 @@ ${GUEST_UI_LOOK_CSS}`;
       warn.textContent = t("noPeers");
       box.appendChild(warn);
     }
-    const grid = document.createElement("div");
-    grid.className = "members";
-    for (const member of members) grid.appendChild(memberRow(task, member));
-    box.appendChild(grid);
+    const groups = groupMembers(members);
+    const entries = [...groups.entries()].map(([key, list]) => {
+      const hasCoord = Boolean(task.coordinator) && list.some((m) => m.sessionId === task.coordinator);
+      const st = groupState(list);
+      const rank = hasCoord ? 0 : st === "running" || st === "running-child" ? 1 : st === "waiting" ? 2 : st === "failed" ? 3 : st === "done" ? 4 : 5;
+      return { key, list, hasCoord, rank };
+    });
+    entries.sort((a, b) => a.rank - b.rank);
+    if (S.expanded.size === 0 && entries.length === 1) S.expanded.add(entries[0].key);
+    for (const entry of entries) {
+      const ordered = [...entry.list].sort((a, b) => (b.sessionId === task.coordinator ? 1 : 0) - (a.sessionId === task.coordinator ? 1 : 0));
+      box.appendChild(groupHeader(task, entry.key, entry.list, entry.hasCoord));
+      if (S.newFor === entry.key) box.appendChild(newSessionEditor(task, entry.key, entry.list));
+      if (!S.expanded.has(entry.key)) continue;
+      const grid = document.createElement("div");
+      grid.className = "members";
+      for (const member of ordered) grid.appendChild(memberRow(task, member));
+      box.appendChild(grid);
+    }
   }
   async function renderFiles(task, box) {
     const files = progressFiles(task);
@@ -2546,6 +2988,24 @@ ${GUEST_UI_LOOK_CSS}`;
   }
   async function setCoordinator(task, sessionId) {
     task.coordinator = sessionId;
+    await persist(task);
+    render();
+  }
+  async function setRole(task, sessionId, role) {
+    const member = (task.members || []).find((m) => m.sessionId === sessionId);
+    if (!member) return;
+    member.role = role;
+    await persist(task);
+    render();
+  }
+  async function setAlias(task, sessionId, value) {
+    const member = (task.members || []).find((m) => m.sessionId === sessionId);
+    if (!member) return;
+    const text = String(value || "").trim();
+    if (text) member.alias = text;
+    else delete member.alias;
+    S.renaming = null;
+    S.openMenu = null;
     await persist(task);
     render();
   }
@@ -2686,19 +3146,27 @@ ${GUEST_UI_LOOK_CSS}`;
     if (document.querySelector(".sheet.show") || S.dragId) return;
     await loadAll();
   }
-  function toggleAuto() {
+  function setAuto(on) {
     const btn = el2("auto");
-    if (S.auto) {
+    if (on && !S.auto) {
+      S.auto = setInterval(() => void autoTick(), AUTO_MS);
+      btn.classList.add("active");
+      btn.textContent = t("auto");
+      void autoTick();
+      return;
+    }
+    if (!on && S.auto) {
       clearInterval(S.auto);
       S.auto = 0;
       btn.classList.remove("active");
       btn.textContent = t("auto");
-      return;
     }
-    S.auto = setInterval(() => void autoTick(), AUTO_MS);
-    btn.classList.add("active");
-    btn.textContent = t("auto") + " \xB7 " + t("on");
-    void autoTick();
+  }
+  function toggleAuto() {
+    const next = !S.auto;
+    setAuto(next);
+    host.storage.set(AUTO_KEY, next).catch(() => {
+    });
   }
   host.onReady((ctx) => {
     applyHostReady(ctx, document.documentElement);
@@ -2711,7 +3179,7 @@ ${GUEST_UI_LOOK_CSS}`;
     el2("app-title").textContent = t("tasks");
     el2("new").textContent = t("newTask");
     el2("refresh").textContent = t("refresh");
-    el2("auto").textContent = S.auto ? t("auto") + " \xB7 " + t("on") : t("auto");
+    el2("auto").textContent = t("auto");
     el2("search").placeholder = t("search");
     el2("sort-label").textContent = t("sort");
     el2("sort").options[0].textContent = t("manual");
@@ -2728,7 +3196,7 @@ ${GUEST_UI_LOOK_CSS}`;
     if (S.mounted) return;
     S.mounted = true;
     if (!S.ticker) S.ticker = setInterval(tickStates, 1e3);
-    el2("refresh").onclick = () => void loadAll();
+    el2("refresh").onclick = () => void loadAll(true);
     el2("search-toggle").onclick = () => {
       const top = document.querySelector(".top");
       if (!top) return;
@@ -2753,5 +3221,8 @@ ${GUEST_UI_LOOK_CSS}`;
       render();
     };
     void loadAll();
+    void host.storage.get(AUTO_KEY).then((value) => {
+      if (value === void 0 || value === true) setAuto(true);
+    }).catch(() => setAuto(true));
   });
 })();

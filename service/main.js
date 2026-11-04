@@ -10,7 +10,7 @@
  * 每个请求带 Authorization: Bearer OPENCHAMBER_SERVICE_TOKEN，GET /health 就绪。
  */
 import http from "node:http"
-import { readFileSync } from "node:fs"
+import { readFileSync, appendFileSync, mkdirSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { execFile } from "node:child_process"
@@ -21,6 +21,16 @@ const TOKEN = process.env.OPENCHAMBER_SERVICE_TOKEN || ""
 const CACHE_MS = 1000
 const STREAM_STALE_MS = 30000
 const CLI_POLL_MS = 4000
+
+const LOG_DIR = join(homedir(), ".task-hub")
+const LOG_FILE = join(LOG_DIR, "service.log")
+
+function log(line) {
+  try {
+    mkdirSync(LOG_DIR, { recursive: true })
+    appendFileSync(LOG_FILE, `${new Date().toISOString()} ${line}\n`)
+  } catch {}
+}
 
 /** sessionID -> { running, since, lastMs, updatedAt } */
 const states = new Map()
@@ -109,6 +119,7 @@ async function followStream() {
 
   try {
     const res = await fetch(url, { headers })
+    log(`stream ${url} status=${res.status} token=${token ? "yes" : "no"}`)
     if (!res.ok || !res.body) {
       streamOk = false
       setTimeout(() => void followStream(), 5000)
@@ -136,6 +147,7 @@ async function followStream() {
     streamOk = false
   } catch {
     streamOk = false
+    log("stream error")
   }
   setTimeout(() => void followStream(), 3000)
 }
@@ -157,8 +169,55 @@ function cli(args, timeout = 12000) {
   })
 }
 
-async function cliSeed() {
+/** 建会话要能区分「成功」「参数错」「引擎不可用」，cli() 只回 stdout 或 null，不够用。 */
+function cliRaw(args, timeout = 30000) {
+  return new Promise((resolve) => {
+    execFile(
+      "opencode",
+      args,
+      { timeout, windowsHide: true, maxBuffer: 16 * 1024 * 1024 },
+      (error, stdout, stderr) => {
+        resolve({
+          ok: !error,
+          text: String(stdout || ""),
+          err: String(stderr || ""),
+          message: error ? String(error.message || "") : ""
+        })
+      }
+    )
+  })
+}
+
+function readBody(req, limit = 256 * 1024) {
+  return new Promise((resolve) => {
+    let size = 0
+    let tooBig = false
+    const chunks = []
+    let settled = false
+    const done = (value) => {
+      if (settled) return
+      settled = true
+      resolve(value)
+    }
+    req.on("data", (chunk) => {
+      size += chunk.length
+      // 超限只停止累积、继续读到 end：先 destroy 会让客户端收不到 400。
+      if (size > limit) {
+        tooBig = true
+        return
+      }
+      chunks.push(chunk)
+    })
+    req.on("end", () => done(tooBig ? null : Buffer.concat(chunks).toString("utf8")))
+    // 中途断开时 end 不一定来，兜底收尾，避免处理函数永久挂住。
+    req.on("close", () => done(null))
+    req.on("error", () => done(null))
+  })
+}
+
+async function cliSeed(force = false) {
   if (cliInflight) return cliInflight
+  if (!force && Date.now() - cliAt < CLI_POLL_MS) return
   cliInflight = (async () => {
     const out = await cli(["api", "get", "/api/session?limit=500"])
     if (!out) return
@@ -197,6 +256,8 @@ async function cliSeed() {
       states.set(session.id, current)
     }
     cliAt = Date.now()
+    const running = [...states.values()].filter((s) => s.running).length
+    log(`seed sessions=${rows.length} running=${running}`)
   })().finally(() => {
     cliInflight = null
   })
@@ -230,6 +291,8 @@ const server = http.createServer(async (req, res) => {
     if (!streamAlive() && Date.now() - cliAt > CLI_POLL_MS) await cliSeed()
     // 事件流看不到的会话（服务晚启动、或错过 started）用一次快照补齐。
     if (ids.some((id) => !states.has(id)) && Date.now() - cliAt > CLI_POLL_MS) await cliSeed()
+    const force = url.searchParams.get("force") === "1"
+    if (force) await cliSeed(true)
 
     const now = Date.now()
     const out = {}
@@ -246,6 +309,52 @@ const server = http.createServer(async (req, res) => {
     }
     res.writeHead(200, { "content-type": "application/json" })
     res.end(JSON.stringify({ at: now, stream: streamAlive(), states: out }))
+    if (!Object.keys(out).length && ids.length) log(`states miss ids=${ids.join(",")}`)
+    return
+  }
+
+  // 面板没有建会话能力（宿主只给 startSession，带 chip 语义），建会话统一走这里，
+  // 面板拿到 id 后自己写进 tasks.json 的 members。
+  if (url.pathname === "/createSession" && req.method === "POST") {
+    const raw = await readBody(req)
+    let body = null
+    try {
+      body = raw ? JSON.parse(raw) : null
+    } catch {
+      body = null
+    }
+    const directory = String((body && body.directory) || "").trim()
+    const title = String((body && body.title) || "").trim()
+    const agent = String((body && body.agent) || "").trim()
+
+    const segments = directory.split(/[\\/]/)
+    const drivePath = /^[A-Za-z]:[\\/]/.test(directory)
+    const posixPath = directory.startsWith("/")
+    // 只收绝对路径，且不许 .. 回溯；路径长度也要挡住异常输入。
+    if ((!drivePath && !posixPath) || segments.includes("..") || directory.length > 512) {
+      res.writeHead(400, { "content-type": "application/json" })
+      res.end('{"error":"bad-directory"}')
+      return
+    }
+
+    const payload = { title: title || "新会话", location: { directory } }
+    if (agent) payload.agent = agent
+    const out = await cliRaw(["api", "POST", "/api/session", "-d", JSON.stringify(payload)])
+    let sessionId = ""
+    if (out.ok) {
+      try {
+        sessionId = String(JSON.parse(out.text).data.id || "")
+      } catch {}
+    }
+    if (!sessionId) {
+      log(`createSession failed dir=${directory} ok=${out.ok} err=${out.err.slice(0, 200)}`)
+      res.writeHead(502, { "content-type": "application/json" })
+      res.end(JSON.stringify({ error: "create-failed", detail: (out.err || out.message || out.text).slice(0, 400) }))
+      return
+    }
+    log(`createSession ok dir=${directory} id=${sessionId}`)
+    res.writeHead(200, { "content-type": "application/json" })
+    res.end(JSON.stringify({ sessionId }))
     return
   }
 
@@ -255,6 +364,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`[task-hub] service on 127.0.0.1:${PORT}`)
+  log(`listening port=${PORT}`)
   void followStream()
   void cliSeed()
 })

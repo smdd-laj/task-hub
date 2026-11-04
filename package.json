@@ -1,6 +1,6 @@
 {
   "name": "task-hub",
-  "version": "1.6.1",
+  "version": "1.8.12",
   "private": true,
   "license": "MIT",
   "description": "One task, many agent sessions, one shared progress folder.",
@@ -15,6 +15,10 @@
         "name": "Task Hub",
         "icon": "links",
         "entry": "panel/index.html"
+      },
+      "page": {
+        "entry": "panel/index.html",
+        "title": "Task Hub"
       },
       "capabilities": [
         "sessions"
