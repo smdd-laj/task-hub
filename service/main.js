@@ -10,7 +10,7 @@
  * 每个请求带 Authorization: Bearer OPENCHAMBER_SERVICE_TOKEN，GET /health 就绪。
  */
 import http from "node:http"
-import { readFileSync, appendFileSync, mkdirSync } from "node:fs"
+import { readFileSync, writeFileSync, appendFileSync, mkdirSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { execFile } from "node:child_process"
@@ -24,6 +24,7 @@ const CLI_POLL_MS = 4000
 
 const LOG_DIR = join(homedir(), ".task-hub")
 const LOG_FILE = join(LOG_DIR, "service.log")
+const SCHEDULES_FILE = join(LOG_DIR, "schedules.json")
 
 function log(line) {
   try {
@@ -215,6 +216,106 @@ function readBody(req, limit = 256 * 1024) {
   })
 }
 
+/* ---------------- scheduled patrol ---------------- */
+
+let schedules = []
+
+function loadSchedules() {
+  try {
+    const data = JSON.parse(readFileSync(SCHEDULES_FILE, "utf8"))
+    schedules = Array.isArray(data.schedules) ? data.schedules : []
+  } catch {
+    schedules = []
+  }
+  return schedules
+}
+
+function saveSchedules() {
+  try {
+    mkdirSync(LOG_DIR, { recursive: true })
+    writeFileSync(SCHEDULES_FILE, JSON.stringify({ version: 1, schedules }, null, 2), "utf8")
+  } catch (error) {
+    log(`schedules write failed ${String(error && error.message).slice(0, 120)}`)
+  }
+}
+
+function publicSchedule(s) {
+  return {
+    taskId: s.taskId,
+    sessionId: s.sessionId,
+    enabled: Boolean(s.enabled),
+    intervalMinutes: Number(s.intervalMinutes) || 30,
+    maxRuns: Number(s.maxRuns) || 0,
+    runs: Number(s.runs) || 0,
+    until: s.until || "",
+    nextRunAt: Number(s.nextRunAt) || 0,
+    lastRunAt: Number(s.lastRunAt) || 0,
+    lastResult: s.lastResult || "",
+    failures: Number(s.failures) || 0,
+    stopReason: s.stopReason || ""
+  }
+}
+
+async function sendPatrol(sessionId, text) {
+  if (!/^ses_[A-Za-z0-9]+$/.test(sessionId) || !text) return false
+  const out = await cliRaw([
+    "api",
+    "POST",
+    `/api/session/${sessionId}/prompt`,
+    "-d",
+    JSON.stringify({ text, delivery: "queue" })
+  ])
+  if (!out.ok) log(`patrol send failed ${sessionId} ${(out.err || out.message || out.text).slice(0, 160)}`)
+  return out.ok
+}
+
+async function tickSchedules() {
+  loadSchedules()
+  const now = Date.now()
+  let changed = false
+  for (const s of schedules) {
+    if (!s.enabled) continue
+    if (s.maxRuns > 0 && (s.runs || 0) >= s.maxRuns) {
+      s.enabled = false
+      s.stopReason = "maxRuns"
+      changed = true
+      continue
+    }
+    if (s.until && now > Date.parse(s.until)) {
+      s.enabled = false
+      s.stopReason = "until"
+      changed = true
+      continue
+    }
+    if (!s.nextRunAt) {
+      s.nextRunAt = now + (s.intervalMinutes || 30) * 60000
+      changed = true
+      continue
+    }
+    if (now < s.nextRunAt) continue
+    // 会话忙就跳过本轮，不排队——排队会堆出一串重复巡检。
+    const state = states.get(s.sessionId)
+    if (state && state.running) {
+      s.nextRunAt = now + 60000
+      changed = true
+      continue
+    }
+    const ok = await sendPatrol(s.sessionId, s.text)
+    s.runs = (s.runs || 0) + 1
+    s.lastRunAt = now
+    s.lastResult = ok ? "sent" : "failed"
+    s.failures = ok ? 0 : (s.failures || 0) + 1
+    if (s.failures >= 3) {
+      s.enabled = false
+      s.stopReason = "failures"
+    }
+    s.nextRunAt = now + (s.intervalMinutes || 30) * 60000
+    changed = true
+    log(`patrol ${ok ? "sent" : "failed"} task=${s.taskId} runs=${s.runs}`)
+  }
+  if (changed) saveSchedules()
+}
+
 async function cliSeed(force = false) {
   if (cliInflight) return cliInflight
   if (!force && Date.now() - cliAt < CLI_POLL_MS) return
@@ -358,6 +459,66 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
+  if (url.pathname === "/schedules" && req.method === "GET") {
+    loadSchedules()
+    res.writeHead(200, { "content-type": "application/json" })
+    res.end(JSON.stringify({ schedules: schedules.map(publicSchedule) }))
+    return
+  }
+
+  if (url.pathname === "/schedules" && req.method === "POST") {
+    const raw = await readBody(req)
+    let body = null
+    try {
+      body = raw ? JSON.parse(raw) : null
+    } catch {
+      body = null
+    }
+    const taskId = String((body && body.taskId) || "").trim()
+    const sessionId = String((body && body.sessionId) || "").trim()
+    if (!/^[A-Za-z0-9_-]+$/.test(taskId) || !/^ses_[A-Za-z0-9]+$/.test(sessionId)) {
+      res.writeHead(400, { "content-type": "application/json" })
+      res.end('{"error":"bad-schedule"}')
+      return
+    }
+    loadSchedules()
+    let s = schedules.find((x) => x.taskId === taskId)
+    if (!s) {
+      s = { taskId }
+      schedules.push(s)
+    }
+    const wasEnabled = Boolean(s.enabled)
+    s.sessionId = sessionId
+    s.text = String((body && body.text) || "").slice(0, 8000)
+    s.intervalMinutes = Math.max(5, Math.min(720, Number(body && body.intervalMinutes) || 30))
+    s.maxRuns = Math.max(0, Math.min(200, Number(body && body.maxRuns) || 0))
+    s.until = String((body && body.until) || "")
+    s.enabled = Boolean(body && body.enabled)
+    if (!s.enabled) {
+      s.stopReason = "manual"
+    } else if (!wasEnabled || !s.nextRunAt) {
+      s.nextRunAt = Date.now() + s.intervalMinutes * 60000
+      s.stopReason = ""
+      s.failures = 0
+    }
+    if (!s.runs) s.runs = 0
+    saveSchedules()
+    res.writeHead(200, { "content-type": "application/json" })
+    res.end(JSON.stringify({ schedule: publicSchedule(s) }))
+    return
+  }
+
+  if (url.pathname === "/schedules" && req.method === "DELETE") {
+    const taskId = (url.searchParams.get("taskId") || "").trim()
+    loadSchedules()
+    const before = schedules.length
+    schedules = schedules.filter((s) => s.taskId !== taskId)
+    if (schedules.length !== before) saveSchedules()
+    res.writeHead(200, { "content-type": "application/json" })
+    res.end(JSON.stringify({ removed: before - schedules.length }))
+    return
+  }
+
   res.writeHead(404, { "content-type": "application/json" })
   res.end('{"error":"not-found"}')
 })
@@ -367,4 +528,7 @@ server.listen(PORT, "127.0.0.1", () => {
   log(`listening port=${PORT}`)
   void followStream()
   void cliSeed()
+  loadSchedules()
+  setInterval(() => void tickSchedules(), 30000)
+  void tickSchedules()
 })

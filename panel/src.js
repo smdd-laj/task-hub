@@ -47,6 +47,27 @@ const DICT = {
     readerCopy: "Copy all",
     readerClose: "Close",
     dirEmpty: "empty",
+    schedule: "Scheduled patrol",
+    hintSchedule: "Send the patrol brief to the coordinator on a timer, with a run cap and a stop time",
+    scheduleOn: "On",
+    scheduleOff: "Off",
+    interval: "Every (min)",
+    maxRuns: "Max runs (0 = no cap)",
+    until: "Stop at",
+    scheduleSaved: "Schedule saved",
+    scheduleRemoved: "Schedule removed",
+    scheduleStopped: "stopped",
+    nextRun: (time) => "next " + time,
+    runsOf: (a, b) => (b > 0 ? a + "/" + b : String(a)),
+    converge: "Tidy",
+    convergeHint: (who) => "Ask " + who + " to shrink this file",
+    convergeQueued: "Switched to the owner, the tidy-up brief is in its chat box",
+    noOwner: "No session owns this file",
+    ownerCoord: "the coordinator",
+    convergePrompt: (title, dir, name, kind) =>
+      kind === "progress"
+        ? "Your progress file " + dir + "/progress/" + name + " is over budget. Compress only your own file: move the earliest half to " + dir + "/archive/" + name + "-<YYYY-MM>.md, keep the latest half plus the pointer line at the top, never drop items that are still open, never turn an undecided judgement into a conclusion. Reply in one line: lines moved and lines kept. Do not touch other sessions progress, HEAD, SUMMARY or DECISIONS."
+        : "Task \"" + title + "\": " + dir + "/" + name + " is over budget. Shrink it per rules/task-collab.md section 8: keep only what is still current, move the older half to " + dir + "/archive/" + name + "-<YYYY-MM>.md, keep the pointer line at the top, never drop settled conclusions or their sources. Reply in one line: what changed and how many lines remain.",
     newSession: "New session", newSessionTitle: "Session name", newSessionRole: "Role", noDirectory: "This group has no absolute path to create in", sessionCreated: "Session created", creating: "Creating",
     orphan: "Created but not saved to the roster",
     fillPrompt: (title, dir, member) =>
@@ -109,6 +130,27 @@ const DICT = {
     readerCopy: "复制全文",
     readerClose: "关闭",
     dirEmpty: "空目录",
+    schedule: "定时巡检",
+    hintSchedule: "按间隔把巡检指令发进协调会话，可设次数与截止时间",
+    scheduleOn: "开",
+    scheduleOff: "关",
+    interval: "间隔（分钟）",
+    maxRuns: "最多几次（0 不限）",
+    until: "截止时间",
+    scheduleSaved: "定时巡检已保存",
+    scheduleRemoved: "定时巡检已删除",
+    scheduleStopped: "已停",
+    nextRun: (time) => "下次 " + time,
+    runsOf: (a, b) => (b > 0 ? a + "/" + b : String(a)),
+    converge: "收",
+    convergeHint: (who) => "让" + who + "收敛这个文件",
+    convergeQueued: "已切到文件所属会话，收敛指令在输入框里",
+    noOwner: "找不到这个文件所属的会话",
+    ownerCoord: "协调会话",
+    convergePrompt: (title, dir, name, kind) =>
+      kind === "progress"
+        ? "你这份 progress 已超预算：" + dir + "/progress/" + name + "。只压缩你自己的文件：把最早一半移进 " + dir + "/archive/" + name + "-<YYYY-MM>.md，正文留最近一半并保留顶部指针行；未闭环的项不许删，没定的判断不许写成结论。压完回一行：移了多少行、还剩多少行。不要动别人的 progress，也不改 HEAD / SUMMARY / DECISIONS。"
+        : "任务「" + title + "」的 " + dir + "/" + name + " 已超预算。按 rules/task-collab.md 第八节收敛：只留当前有效内容，把较早的一半移进 " + dir + "/archive/" + name + "-<YYYY-MM>.md，正文保留顶部指针行；已定结论与出处不许丢。压完回一行：改了什么、现在剩多少行。",
     newSession: "新会话", newSessionTitle: "会话名", newSessionRole: "角色", noDirectory: "这一组拿不到绝对路径，不能建会话", sessionCreated: "已建会话", creating: "创建中",
     orphan: "会话已建，但没写进名册",
     fillPrompt: (title, dir, member) =>
@@ -153,6 +195,7 @@ const S = {
   live: new Map(), busy: new Set(), service: new Map(), subscribed: new Set(), since: new Map(), stateNodes: [], groupNodes: [], expanded: new Set(), openMenu: null, headMenu: false, renaming: null, lastKey: "", ticker: 0, loc: "en", auto: 0, mounted: false,
   formMode: "create", formId: null, pickQ: "", pickRows: [], pickProjects: 0,
   newFor: null, newTitle: "", newRole: "helper", newBusy: false, newCreated: "", filesOpen: false,
+  schedules: new Map(), scheduleFor: null, scheduleForm: null,
   deleting: null, deleteTimer: 0, dragId: null
 }
 
@@ -463,6 +506,61 @@ async function createSessionRequest(directory, title, agent) {
   }
 }
 
+async function loadSchedules() {
+  if (typeof host.serviceRequest !== "function") return
+  try {
+    const res = await host.serviceRequest({ method: "GET", path: "/schedules" })
+    const text = typeof res?.body === "string" ? res.body : ""
+    const data = text ? JSON.parse(text) : null
+    S.schedules = new Map()
+    for (const s of (data && data.schedules) || []) S.schedules.set(s.taskId, s)
+  } catch {}
+}
+
+async function saveSchedule(task) {
+  const form = S.scheduleForm
+  if (!form) return
+  if (!task.coordinator) {
+    toast(t("noCoord"), "error")
+    return
+  }
+  try {
+    await host.serviceRequest({
+      method: "POST",
+      path: "/schedules",
+      body: {
+        taskId: task.id,
+        sessionId: task.coordinator,
+        text: t("patrolPrompt")(task.title || task.id, task.progressDir || ""),
+        enabled: Boolean(form.enabled),
+        intervalMinutes: Number(form.intervalMinutes) || 30,
+        maxRuns: Number(form.maxRuns) || 0,
+        until: form.until || ""
+      }
+    })
+    S.scheduleFor = null
+    S.scheduleForm = null
+    await loadSchedules()
+    render()
+    toast(t("scheduleSaved"), "success")
+  } catch (error) {
+    toast(String((error && error.code) || "ERR"), "error")
+  }
+}
+
+async function removeSchedule(task) {
+  try {
+    await host.serviceRequest({ method: "DELETE", path: "/schedules", query: { taskId: task.id } })
+    S.scheduleFor = null
+    S.scheduleForm = null
+    await loadSchedules()
+    render()
+    toast(t("scheduleRemoved"), "success")
+  } catch (error) {
+    toast(String((error && error.code) || "ERR"), "error")
+  }
+}
+
 async function serviceStates(ids, force) {
   if (!ids.length) return { data: null, error: "" }
   if (typeof host.serviceRequest !== "function") return { data: null, error: "no-service-api" }
@@ -489,6 +587,7 @@ async function loadAll(force = false) {
     S.ids = list.map((task) => task.id)
     S.tasks = new Map(list.map((task) => [task.id, task]))
     S.live = await collectLive()
+    void loadSchedules()
     recomputeBusy()
     void subscribeLive()
 
@@ -1156,6 +1255,17 @@ async function renderDetail() {
           toast(String((error && error.code) || "ERR"), "error")
         }
       }, t("hintTidyTitles")),
+      button(t("schedule"), "accent", () => {
+        S.scheduleFor = task.id
+        const current = S.schedules.get(task.id)
+        S.scheduleForm = {
+          enabled: current ? current.enabled : true,
+          intervalMinutes: current ? current.intervalMinutes : 30,
+          maxRuns: current ? current.maxRuns : 8,
+          until: current ? current.until : defaultUntil()
+        }
+        void renderDetail()
+      }, t("hintSchedule")),
       button(t("edit"), "", () => openForm("edit", task), t("hintEdit")),
       del
     )
@@ -1189,6 +1299,35 @@ async function renderDetail() {
     })
   )
   box.appendChild(prow)
+
+  // 定时巡检：一行状态，点 ⋯ → 定时巡检 配置。
+  const sched = S.schedules.get(task.id)
+  const srow = document.createElement("div")
+  srow.className = "progress"
+  const slabel = document.createElement("span")
+  slabel.className = "progress-label"
+  slabel.textContent = t("schedule")
+  srow.appendChild(slabel)
+  const stext = document.createElement("span")
+  stext.className = "progress-path"
+  if (!sched) {
+    stext.textContent = t("scheduleOff")
+  } else {
+    const bits = [sched.enabled ? t("scheduleOn") : t("scheduleOff")]
+    bits.push(t("interval") + " " + sched.intervalMinutes)
+    bits.push(t("runsOf")(sched.runs, sched.maxRuns))
+    if (sched.enabled && sched.nextRunAt) {
+      bits.push(t("nextRun")(new Date(sched.nextRunAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })))
+    }
+    if (!sched.enabled && sched.stopReason) {
+      bits.push(t("scheduleStopped") + " (" + sched.stopReason + ")")
+    }
+    stext.textContent = bits.join(" \u00b7 ")
+  }
+  srow.appendChild(stext)
+  box.appendChild(srow)
+
+  if (S.scheduleFor === task.id && S.scheduleForm) box.appendChild(scheduleEditor(task))
 
   const filesBox = document.createElement("div")
   filesBox.className = "files"
@@ -1230,6 +1369,81 @@ async function renderDetail() {
   }
 }
 
+// 表单默认截止：当天 22:00；已过 22:00 就顺延到明天。
+function defaultUntil() {
+  const d = new Date()
+  d.setHours(22, 0, 0, 0)
+  if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1)
+  const pad = (n) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function scheduleEditor(task) {
+  const form = S.scheduleForm
+  const box = document.createElement("div")
+  box.className = "menu schedule"
+
+  const on = button(t("scheduleOn"), form.enabled ? "primary" : "", () => {
+    form.enabled = true
+    void renderDetail()
+  })
+  const off = button(t("scheduleOff"), !form.enabled ? "primary" : "", () => {
+    form.enabled = false
+    void renderDetail()
+  })
+
+  const interval = document.createElement("input")
+  interval.type = "number"
+  interval.min = "5"
+  interval.className = "rename"
+  interval.value = form.intervalMinutes
+  interval.placeholder = t("interval")
+  interval.title = t("interval")
+  interval.oninput = () => {
+    form.intervalMinutes = Number(interval.value) || 30
+  }
+
+  const runs = document.createElement("input")
+  runs.type = "number"
+  runs.min = "0"
+  runs.className = "rename"
+  runs.value = form.maxRuns
+  runs.placeholder = t("maxRuns")
+  runs.title = t("maxRuns")
+  runs.oninput = () => {
+    form.maxRuns = Number(runs.value) || 0
+  }
+
+  const until = document.createElement("input")
+  until.type = "datetime-local"
+  until.className = "rename"
+  until.value = form.until
+  until.title = t("until")
+  until.oninput = () => {
+    form.until = until.value
+  }
+
+  const save = button(t("save"), "primary", () => void saveSchedule(task))
+  const del = button(t("delete"), "danger", () => void removeSchedule(task))
+  const cancel = button(t("cancel"), "", () => {
+    S.scheduleFor = null
+    S.scheduleForm = null
+    void renderDetail()
+  })
+
+  const field = (label, input) => {
+    const wrap = document.createElement("label")
+    wrap.className = "field"
+    const span = document.createElement("span")
+    span.textContent = label
+    wrap.append(span, input)
+    return wrap
+  }
+
+  box.append(on, off, field(t("interval"), interval), field(t("maxRuns"), runs), field(t("until"), until), save, del, cancel)
+  return box
+}
+
 async function renderFiles(task, box) {
   const files = await progressFiles(task)
   const rows = await Promise.all(
@@ -1267,6 +1481,21 @@ async function renderFiles(task, box) {
     el.className = "file" + (row.info || row.group === "dir" ? "" : " missing")
     el.textContent = row.name + " \u00b7 " + label
     el.title = row.path
+    if (row.group === "core" || row.group === "progress") {
+      const owner = row.group === "progress" ? progressOwner(task, row.name) : null
+      const who = owner ? (owner.alias || owner.title || owner.sessionId.slice(-6)) : t("ownerCoord")
+      const over = row.budget && row.size >= row.budget * 0.8
+      const fix = document.createElement("button")
+      fix.type = "button"
+      fix.className = "btn tiny" + (over ? " accent" : "")
+      fix.textContent = t("converge")
+      fix.title = t("convergeHint")(who)
+      fix.onclick = (event) => {
+        event.stopPropagation()
+        void convergeFile(task, row)
+      }
+      el.appendChild(fix)
+    }
     return el
   }
 
@@ -1276,7 +1505,7 @@ async function renderFiles(task, box) {
       el.classList.add("click")
       el.onclick = () => void openReader(row.name, row.path)
     }
-    if (row.budget) {
+    if (row.budget && row.size > 0) {
       el.appendChild(budgetBar(row.size, row.budget))
       if (row.size >= row.budget) el.classList.add("bad")
     }
@@ -1304,7 +1533,7 @@ async function renderFiles(task, box) {
           el.classList.add("click")
           el.onclick = () => void openReader(row.name, row.path)
         }
-        el.appendChild(budgetBar(row.size, row.budget))
+        if (row.size > 0) el.appendChild(budgetBar(row.size, row.budget))
         if (row.size >= row.budget) el.classList.add("bad")
         box.appendChild(el)
       }
@@ -1318,6 +1547,33 @@ async function renderFiles(task, box) {
     el.classList.add("click")
     el.onclick = () => void openReader(row.name, row.path, row.names.length ? row.names.join("\n") : t("dirEmpty"))
     box.appendChild(el)
+  }
+}
+
+function progressOwner(task, name) {
+  const m = String(name).match(/^progress-([A-Za-z0-9]+)\.md$/)
+  if (!m) return null
+  return (task.members || []).find((x) => String(x.sessionId || "").endsWith(m[1])) || null
+}
+
+// 文件收敛：progress 归写它的会话，HEAD/SUMMARY/DECISIONS/RUNBOOK 归协调会话。
+async function convergeFile(task, row) {
+  const kind = row.group === "progress" ? "progress" : "core"
+  const owner = kind === "progress" ? progressOwner(task, row.name) : null
+  const target = kind === "progress" ? (owner && owner.sessionId) : task.coordinator
+  if (!target) {
+    toast(t("noOwner"), "error")
+    return
+  }
+  try {
+    await gotoSession(target)
+    await host.compose({
+      text: t("convergePrompt")(task.title || task.id, task.progressDir || "", row.name, kind),
+      mode: "replace"
+    })
+    toast(t("convergeQueued"), "success")
+  } catch (error) {
+    toast(String((error && error.code) || "ERR"), "error")
   }
 }
 
