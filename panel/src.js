@@ -12,7 +12,7 @@ const AUTO_KEY = "taskhub.auto"
 const AUTO_MS = 1500
 // 与 rules/task-collab.md 第八节同一套预算，面板只负责把它可视化。
 const FILE_BUDGET = {
-  "HEAD.md": 2 * 1024,
+  "HEAD.md": 8 * 1024,
   "SUMMARY.md": 40 * 1024,
   "RUNBOOK.md": 30 * 1024,
   progress: 40 * 1024
@@ -163,7 +163,7 @@ const DICT = {
     settleQueued: "已切到协调会话，收拢指令在它的输入框里",
     settlePrompt: (title, dir) =>
       "现在对任务「" + title + "」做一次收拢，按 rules/task-collab.md 第八节执行，四步做完再回报。\n\n" +
-      "1. 汇总：读 " + dir + "/HEAD.md、SUMMARY.md、RUNBOOK.md 和最近变化的 progress-*.md，把 HEAD.md 覆盖写成当前状态（≤40 行：状态 / 正在做 / 卡在哪 / 下一步 / 出处），不追加。\n" +
+      "1. 汇总：读 " + dir + "/HEAD.md、SUMMARY.md、RUNBOOK.md 和最近变化的 progress-*.md，把 HEAD.md 覆盖写成当前状态（≤160 行：状态 / 正在做 / 卡在哪 / 下一步 / 出处），不追加。\n" +
       "2. 归档：SUMMARY.md 超过 300 行由你归档；某份 progress-<id>.md 超过 400 行的，通知写它的那个会话自己压缩归档，你不代改别人的 progress。归档前把可复用的操作知识提到 RUNBOOK.md，按七类扫：部署链条（仓→分支→流水线→域名，回滚点）、环境、git（基线/worktree/合并顺序/冲突）、模拟运行（模拟器/APK/设备号/登录）、构建、验证、踩坑。\n" +
       "3. 整理：把散在任务目录里的成品（提测资料、方案、DMS 工单草稿、配置变更记录、清单、待发回复、沟通文本）移进 " + dir + "/deliverables/；只移动明确是成品的，拿不准的列出来问我，不删任何文件。\n" +
       "4. 回报：一行说清改了哪些文件、归档了多少行、HEAD 现在的三句话；需要我拍板的单独列。\n\n" +
