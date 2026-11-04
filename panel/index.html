@@ -124,6 +124,22 @@
   .files { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 0 8px; border-bottom: 1px solid var(--line); }
   .file { font-size: 11px; color: var(--hint); background: var(--soft); border-radius: 6px; padding: 1px 6px; }
   .file.missing { opacity: 0.55; }
+  .file.click { cursor: pointer; }
+  .file.click:hover { color: var(--accent); }
+  .file.bad { color: var(--error-text, #c0392b); border: 1px solid var(--error-text, #c0392b); }
+  .bar { display: inline-block; width: 30px; height: 4px; border-radius: 2px; background: var(--line); margin-inline-start: 5px; vertical-align: middle; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--accent); }
+  .bar.warn i { background: var(--warning-text, #b26a00); }
+  .bar.full i { background: var(--error-text, #c0392b); }
+  .alert { display: flex; align-items: center; gap: 8px; flex-basis: 100%; color: var(--warning-text, #b26a00); font-size: 11px; }
+  .alert.bad { color: var(--error-text, #c0392b); }
+  .alert-text { flex: 1; min-width: 0; }
+  .reader-mask { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; z-index: 60; }
+  .reader { width: min(760px, 94vw); max-height: 82vh; display: flex; flex-direction: column; background: var(--background, #fff); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .reader-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  .reader-name { flex: 1; font-weight: 600; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .reader-body { margin: 0; padding: 10px; overflow: auto; font-size: 11px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; font-family: var(--font-mono, monospace); }
+  .reader-note { padding: 4px 10px; color: var(--hint); font-size: 11px; border-top: 1px solid var(--line); }
   .empty { color: var(--hint); padding: 12px 2px; }
   .warn { color: var(--warning-text, #b26a00); padding: 6px 0; }
   .error { color: var(--error-text, #c0392b); font-weight: 600; padding: 6px 0; }

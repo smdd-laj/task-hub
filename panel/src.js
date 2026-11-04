@@ -4,12 +4,19 @@ import { applyHostReady } from "@openchamber/sdk/ui"
 const host = connectHost()
 const el = (id) => document.getElementById(id)
 
-const DEFAULT_ROOT = "~/.task-hub"
+const DEFAULT_ROOT = "~/.task-hub/tasks"
 const FILE_TASKS = "~/.task-hub/tasks.json"
 const FILE_SETTINGS = "~/.task-hub/settings.json"
 const KEY_SELECTED = "taskhub.selected"
 const AUTO_KEY = "taskhub.auto"
 const AUTO_MS = 1500
+// 与 rules/task-collab.md 第八节同一套预算，面板只负责把它可视化。
+const FILE_BUDGET = {
+  "HEAD.md": 2 * 1024,
+  "SUMMARY.md": 40 * 1024,
+  "RUNBOOK.md": 30 * 1024,
+  progress: 40 * 1024
+}
 
 const DICT = {
   en: {
@@ -25,6 +32,21 @@ const DICT = {
     roleMain: "main", roleHelper: "helper", roleNone: "unset", actions: "Actions",
     setMain: "Make main", setHelper: "Make helper",
     fillHelpers: "Fill helpers", overCap: "over 3", noCoord: "No coordinator set", copyId: "Copy id", alias: "Display name", setAlias: "Rename", tidyTitles: "Tidy titles",
+    hintJump: "Open the coordinator session this task points to",
+    hintAdd: "Create a session in this group's worktree and add it to the roster",
+    hintSettle: "Overwrite HEAD, archive over-budget files, lift knowledge into RUNBOOK, sort deliverables",
+    hintPatrol: "One patrol round: who runs, who can advance, who waits on you",
+    hintSummary: "Ask the coordinator to read everything and answer in six parts",
+    hintTidyTitles: "Rename members to project - what it is doing now",
+    hintEdit: "Edit name, goal, acceptance and progress folder",
+    hintDelete: "Remove this task from the roster; files stay on disk",
+    overBudget: "over budget",
+    foldFiles: "Show less",
+    unfoldFiles: (n) => "Show " + n,
+    readerTruncated: "First 200 lines only",
+    readerCopy: "Copy all",
+    readerClose: "Close",
+    dirEmpty: "empty",
     newSession: "New session", newSessionTitle: "Session name", newSessionRole: "Role", noDirectory: "This group has no absolute path to create in", sessionCreated: "Session created", creating: "Creating",
     orphan: "Created but not saved to the roster",
     fillPrompt: (title, dir, member) =>
@@ -37,7 +59,7 @@ const DICT = {
     settlePrompt: (title, dir) =>
       "Tidy task \"" + title + "\" now, following rules/task-collab.md section 8, and report only after all four steps.\n\n" +
       "1. Summarize: read " + dir + "/HEAD.md, SUMMARY.md, RUNBOOK.md and the recently changed progress-*.md; overwrite HEAD.md with the current state (<=40 lines: state / doing / blocked / next / sources). Do not append.\n" +
-      "2. Archive: when SUMMARY.md exceeds 300 lines or a progress-<id>.md exceeds 400 lines, move the earliest half to " + dir + "/archive/<name>-<YYYY-MM>.md, keep the latest half plus the pointer line at the top. Before archiving, lift any reusable operating knowledge (start commands, environment addresses, config ids, pitfalls) into RUNBOOK.md.\n" +
+      "2. Archive SUMMARY.md yourself when it exceeds 300 lines. For a progress-<id>.md over 400 lines, tell the session that owns it to compress and archive its own file; never rewrite another session's progress. Before archiving, lift reusable operating knowledge into RUNBOOK.md across seven buckets: deployment chain (repo to branch to pipeline to domain, rollback point), environment, git (baseline, worktree, merge order, conflicts), simulator or device runs, build, verification, pitfalls.\n" +
       "3. Tidy: move finished deliverables scattered in the task folder (test package, design, DMS draft, config change log, checklists, pending replies, message drafts) into " + dir + "/deliverables/. Move only what is clearly a deliverable; list the uncertain ones for me. Delete nothing.\n" +
       "4. Report: one line on which files changed, how many lines were archived, and HEAD in three sentences; list anything that needs my decision separately.\n\n" +
       "Credentials: write where they live, never their value. Do not touch business code, do not commit, push or merge.",
@@ -72,6 +94,21 @@ const DICT = {
     roleMain: "主线", roleHelper: "辅助", roleNone: "未标", actions: "操作",
     setMain: "设为主线", setHelper: "设为辅助",
     fillHelpers: "补充看板会话", overCap: "超过三个", noCoord: "这件任务还没设协调会话", copyId: "复制会话 id", alias: "显示名", setAlias: "改标题", tidyTitles: "让协调整理标题",
+    hintJump: "切到这件任务设定的协调会话，不带提示词",
+    hintAdd: "在这个项目组的 worktree 里新建会话，并写入名册",
+    hintSettle: "让协调覆盖 HEAD、归档超限文件、把操作知识提到 RUNBOOK、整理成品",
+    hintPatrol: "跑一轮巡检：谁在跑、谁可推进、谁在等你",
+    hintSummary: "让协调读完汇总，按六段回答并更新 SUMMARY",
+    hintTidyTitles: "把成员显示名改成「项目简称 - 正在做的事」",
+    hintEdit: "改任务名、目标、验收和进度目录",
+    hintDelete: "从名册删除这件任务；磁盘上的文件不动",
+    overBudget: "超预算",
+    foldFiles: "收起",
+    unfoldFiles: (n) => "展开 " + n,
+    readerTruncated: "只显示前 200 行",
+    readerCopy: "复制全文",
+    readerClose: "关闭",
+    dirEmpty: "空目录",
     newSession: "新会话", newSessionTitle: "会话名", newSessionRole: "角色", noDirectory: "这一组拿不到绝对路径，不能建会话", sessionCreated: "已建会话", creating: "创建中",
     orphan: "会话已建，但没写进名册",
     fillPrompt: (title, dir, member) =>
@@ -85,7 +122,7 @@ const DICT = {
     settlePrompt: (title, dir) =>
       "现在对任务「" + title + "」做一次收拢，按 rules/task-collab.md 第八节执行，四步做完再回报。\n\n" +
       "1. 汇总：读 " + dir + "/HEAD.md、SUMMARY.md、RUNBOOK.md 和最近变化的 progress-*.md，把 HEAD.md 覆盖写成当前状态（≤40 行：状态 / 正在做 / 卡在哪 / 下一步 / 出处），不追加。\n" +
-      "2. 归档：SUMMARY.md 超过 300 行、某份 progress-<id>.md 超过 400 行，就把最早一半移到 " + dir + "/archive/<原文件名>-<YYYY-MM>.md，正文留最近一半并保留顶部指针行；归档前先把里面可复用的操作知识（启动命令、环境地址、配置 id、踩过的坑）提到 RUNBOOK.md。\n" +
+      "2. 归档：SUMMARY.md 超过 300 行由你归档；某份 progress-<id>.md 超过 400 行的，通知写它的那个会话自己压缩归档，你不代改别人的 progress。归档前把可复用的操作知识提到 RUNBOOK.md，按七类扫：部署链条（仓→分支→流水线→域名，回滚点）、环境、git（基线/worktree/合并顺序/冲突）、模拟运行（模拟器/APK/设备号/登录）、构建、验证、踩坑。\n" +
       "3. 整理：把散在任务目录里的成品（提测资料、方案、DMS 工单草稿、配置变更记录、清单、待发回复、沟通文本）移进 " + dir + "/deliverables/；只移动明确是成品的，拿不准的列出来问我，不删任何文件。\n" +
       "4. 回报：一行说清改了哪些文件、归档了多少行、HEAD 现在的三句话；需要我拍板的单独列。\n\n" +
       "凭据只写位置不写值；不要动业务代码，不要提交、推送、合并。",
@@ -115,7 +152,7 @@ const S = {
   selected: null, query: "", sort: "manual", me: null, meTitle: "",
   live: new Map(), busy: new Set(), service: new Map(), subscribed: new Set(), since: new Map(), stateNodes: [], groupNodes: [], expanded: new Set(), openMenu: null, headMenu: false, renaming: null, lastKey: "", ticker: 0, loc: "en", auto: 0, mounted: false,
   formMode: "create", formId: null, pickQ: "", pickRows: [], pickProjects: 0,
-  newFor: null, newTitle: "", newRole: "helper", newBusy: false, newCreated: "",
+  newFor: null, newTitle: "", newRole: "helper", newBusy: false, newCreated: "", filesOpen: false,
   deleting: null, deleteTimer: 0, dragId: null
 }
 
@@ -178,17 +215,39 @@ function readable(task) {
   return typeof task.progressDir === "string" && task.progressDir.startsWith("~/")
 }
 
-function progressFiles(task) {
-  const dir = task.progressDir || ""
-  const files = [
-    { name: "README.md", path: dir + "/README.md" },
-    { name: "SUMMARY.md", path: dir + "/SUMMARY.md" }
-  ]
-  for (const member of task.members || []) {
-    const suffix = String(member.sessionId || "").slice(-6)
-    if (!suffix) continue
-    files.push({ name: "progress-" + suffix + ".md", path: dir + "/progress-" + suffix + ".md" })
+async function listNames(dir, pattern) {
+  try {
+    const listing = await host.listDir(dir)
+    return (listing.entries || [])
+      .filter((entry) => entry.kind === "file" && pattern.test(entry.name))
+      .map((entry) => entry.name)
+      .sort()
+  } catch {
+    return []
   }
+}
+
+// 2026-11-04 修：progress 已收进 progress/ 子目录，README 退休；
+// 旧结构（文件还在根下）保留回退，迁移中的任务不至于看不到文件。
+async function progressFiles(task) {
+  const dir = (task.progressDir || "").replace(/\/+$/, "")
+  const files = [
+    { group: "core", name: "HEAD.md", path: dir + "/HEAD.md", budget: FILE_BUDGET["HEAD.md"] },
+    { group: "core", name: "SUMMARY.md", path: dir + "/SUMMARY.md", budget: FILE_BUDGET["SUMMARY.md"] },
+    { group: "core", name: "RUNBOOK.md", path: dir + "/RUNBOOK.md", budget: FILE_BUDGET["RUNBOOK.md"] },
+    { group: "core", name: "DECISIONS.md", path: dir + "/DECISIONS.md", budget: 0 }
+  ]
+  let base = dir + "/progress"
+  let names = await listNames(base, /^progress-.*\.md$/)
+  if (!names.length) {
+    base = dir
+    names = await listNames(base, /^progress-.*\.md$/)
+  }
+  for (const name of names) {
+    files.push({ group: "progress", name, path: base + "/" + name, budget: FILE_BUDGET.progress })
+  }
+  files.push({ group: "dir", name: "deliverables/", path: dir + "/deliverables" })
+  files.push({ group: "dir", name: "archive/", path: dir + "/archive" })
   return files
 }
 
@@ -201,39 +260,36 @@ async function statPath(path) {
   }
 }
 
-function readmeText(task) {
+function headText(task) {
   const lines = [
-    "# " + (task.title || task.id),
+    "# " + (task.title || task.id) + " \u00b7 \u5f53\u524d\u72b6\u6001",
     "",
-    "- task: " + task.id,
-    "- goal: " + (task.goal || ""),
-    "- done when: " + (task.acceptance || ""),
+    "> \u6bcf\u8f6e\u8986\u76d6\u5199\uff0c\u4e0d\u8ffd\u52a0\u3002",
     "",
-    "## Sessions"
+    "## \u72b6\u6001",
+    "",
+    "## \u6b63\u5728\u505a",
+    "",
+    "## \u5361\u5728\u54ea",
+    "",
+    "## \u4e0b\u4e00\u6b65",
+    "",
+    "## \u51fa\u5904"
   ]
-  for (const member of task.members || []) {
-    lines.push("- " + (member.title || "session") + " (" + member.sessionId + ")")
-  }
-  lines.push(
-    "",
-    "## How we write here",
-    "1. Each session writes only progress-<last 6 of its id>.md: facts, current state, who owes an answer.",
-    "2. Do not edit other people's files; to change a decision, write it in your own file and name them.",
-    "3. SUMMARY.md holds settled conclusions only; undecided items stay in the progress files."
-  )
   return lines.join("\n") + "\n"
 }
 
 async function ensureFolder(task, force) {
   if (!readable(task)) return
   const dir = task.progressDir.replace(/\/+$/, "")
-  const readme = dir + "/README.md"
-  if (force || !(await statPath(readme))) {
-    await host.writeFile(readme, readmeText(task)).catch(() => {})
+  // README 已退休：不再生成，否则每次打开详情都会把移走的文件写回来。
+  const head = dir + "/HEAD.md"
+  if (force || !(await statPath(head))) {
+    await host.writeFile(head, headText(task)).catch(() => {})
   }
   const summary = dir + "/SUMMARY.md"
   if (!(await statPath(summary))) {
-    await host.writeFile(summary, "# " + (task.title || task.id) + " · summary\n\nSettled conclusions only.\n").catch(() => {})
+    await host.writeFile(summary, "# " + (task.title || task.id) + " · 汇总\n\n只写已定结论。\n\n").catch(() => {})
   }
 }
 
@@ -508,18 +564,34 @@ async function gotoSession(sessionId) {
   }
 }
 
+async function runSettle(task) {
+  if (!task.coordinator) {
+    toast(t("noCoord"), "error")
+    return
+  }
+  try {
+    await gotoSession(task.coordinator)
+    await host.compose({ text: t("settlePrompt")(task.title || task.id, task.progressDir || ""), mode: "replace" })
+    toast(t("settleQueued"), "success")
+  } catch (error) {
+    toast(String((error && error.code) || "ERR"), "error")
+  }
+}
+
 function isMine(task) {
   return Boolean(S.me) && (task.members || []).some((member) => member.sessionId === S.me)
 }
 
 /* ---------------- render ---------------- */
 
-function button(label, variant, onClick) {
+function button(label, variant, onClick, hint) {
   const b = document.createElement("button")
   b.type = "button"
   b.className = "btn " + (variant || "")
   b.textContent = label
   b.onclick = onClick
+  // 悬停说明：图标与短文案按钮靠它讲清作用。
+  if (hint) b.title = hint
   return b
 }
 
@@ -1015,7 +1087,7 @@ async function renderDetail() {
     clearTimeout(S.deleteTimer)
     S.deleting = null
     void removeTask(task.id).then(render)
-  })
+  }, t("hintDelete"))
   const moreBtn = button("\u22ef", "", () => {
     S.headMenu = !S.headMenu
     void renderDetail()
@@ -1030,11 +1102,11 @@ async function renderDetail() {
         } catch (error) {
           toast(String((error && error.code) || "ERR"), "error")
         }
-      })
+      }, t("hintJump"))
     )
   }
   headActions.append(
-    button(t("addSession"), "accent", () => void openPicker(task)),
+    button(t("addSession"), "accent", () => void openPicker(task), t("hintAdd")),
     moreBtn
   )
   head.appendChild(headActions)
@@ -1044,19 +1116,7 @@ async function renderDetail() {
     const menu = document.createElement("div")
     menu.className = "headmenu"
     menu.append(
-      button(t("settle"), "accent", async () => {
-        if (!task.coordinator) {
-          toast(t("noCoord"), "error")
-          return
-        }
-        try {
-          await gotoSession(task.coordinator)
-          await host.compose({ text: t("settlePrompt")(task.title || task.id, task.progressDir || ""), mode: "replace" })
-          toast(t("settleQueued"), "success")
-        } catch (error) {
-          toast(String((error && error.code) || "ERR"), "error")
-        }
-      }),
+      button(t("settle"), "accent", () => void runSettle(task), t("hintSettle")),
       button(t("patrol"), "accent", async () => {
         if (!task.coordinator) {
           toast(t("noCoord"), "error")
@@ -1069,7 +1129,7 @@ async function renderDetail() {
         } catch (error) {
           toast(String((error && error.code) || "ERR"), "error")
         }
-      }),
+      }, t("hintPatrol")),
       button(t("summarize"), "accent", async () => {
         if (!task.coordinator) {
           toast(t("noCoord"), "error")
@@ -1082,7 +1142,7 @@ async function renderDetail() {
         } catch (error) {
           toast(String((error && error.code) || "ERR"), "error")
         }
-      }),
+      }, t("hintSummary")),
       button(t("tidyTitles"), "accent", async () => {
         if (!task.coordinator) {
           toast(t("noCoord"), "error")
@@ -1095,8 +1155,8 @@ async function renderDetail() {
         } catch (error) {
           toast(String((error && error.code) || "ERR"), "error")
         }
-      }),
-      button(t("edit"), "", () => openForm("edit", task)),
+      }, t("hintTidyTitles")),
+      button(t("edit"), "", () => openForm("edit", task), t("hintEdit")),
       del
     )
     box.appendChild(menu)
@@ -1171,18 +1231,157 @@ async function renderDetail() {
 }
 
 async function renderFiles(task, box) {
-  const files = progressFiles(task)
+  const files = await progressFiles(task)
   const rows = await Promise.all(
-    files.map(async (file) => ({ ...file, info: await statPath(file.path) }))
+    files.map(async (file) => {
+      if (file.group === "dir") {
+        const listing = await host.listDir(file.path).catch(() => null)
+        const entries = listing ? (listing.entries || []).filter((e) => e.kind === "file") : []
+        return { ...file, count: entries.length, names: entries.map((e) => e.name) }
+      }
+      const info = await statPath(file.path)
+      return { ...file, info, size: info ? info.size : 0 }
+    })
   )
+
   box.replaceChildren()
-  for (const row of rows) {
-    const chip = document.createElement("span")
-    chip.className = "file" + (row.info ? "" : " missing")
-    chip.textContent = row.name + (row.info ? " \u00b7 " + humanSize(row.info.size) : " \u00b7 \u2014")
-    chip.title = row.path
-    box.appendChild(chip)
+
+  // 超限提示：任一文件到 80% 就在文件区顶部给一条，并直接放出收拢按钮。
+  const breaches = rows
+    .filter((r) => r.budget && r.size >= r.budget * 0.8)
+    .sort((a, b) => b.size / b.budget - a.size / a.budget)
+  if (breaches.length) {
+    const worst = breaches[0]
+    const pct = Math.round((worst.size / worst.budget) * 100)
+    const alert = document.createElement("div")
+    alert.className = "alert" + (pct >= 100 ? " bad" : "")
+    const text = document.createElement("span")
+    text.className = "alert-text"
+    text.textContent = t("overBudget") + " \u00b7 " + worst.name + " " + pct + "%"
+    alert.append(text, button(t("settle"), "accent", () => void runSettle(task), t("hintSettle")))
+    box.appendChild(alert)
   }
+
+  const makeChip = (row, label) => {
+    const el = document.createElement("span")
+    el.className = "file" + (row.info || row.group === "dir" ? "" : " missing")
+    el.textContent = row.name + " \u00b7 " + label
+    el.title = row.path
+    return el
+  }
+
+  for (const row of rows.filter((r) => r.group === "core")) {
+    const el = makeChip(row, row.info ? humanSize(row.size) : "\u2014")
+    if (row.info) {
+      el.classList.add("click")
+      el.onclick = () => void openReader(row.name, row.path)
+    }
+    if (row.budget) {
+      el.appendChild(budgetBar(row.size, row.budget))
+      if (row.size >= row.budget) el.classList.add("bad")
+    }
+    box.appendChild(el)
+  }
+
+  const progressRows = rows.filter((r) => r.group === "progress")
+  if (progressRows.length) {
+    const total = progressRows.reduce((a, r) => a + r.size, 0)
+    const max = progressRows.reduce((a, r) => Math.max(a, r.size), 0)
+    const head = document.createElement("span")
+    head.className = "file click"
+    head.textContent =
+      "progress/ \u00b7 " + progressRows.length + " \u00b7 " + humanSize(total) + " \u00b7 max " + humanSize(max)
+    head.title = S.filesOpen ? t("foldFiles") : t("unfoldFiles")(progressRows.length)
+    head.onclick = () => {
+      S.filesOpen = !S.filesOpen
+      void renderDetail()
+    }
+    box.appendChild(head)
+    if (S.filesOpen) {
+      for (const row of progressRows) {
+        const el = makeChip(row, row.info ? humanSize(row.size) : "\u2014")
+        if (row.info) {
+          el.classList.add("click")
+          el.onclick = () => void openReader(row.name, row.path)
+        }
+        el.appendChild(budgetBar(row.size, row.budget))
+        if (row.size >= row.budget) el.classList.add("bad")
+        box.appendChild(el)
+      }
+    } else if (progressRows.some((r) => r.size >= r.budget)) {
+      head.classList.add("bad")
+    }
+  }
+
+  for (const row of rows.filter((r) => r.group === "dir")) {
+    const el = makeChip(row, row.count ? row.count + " 个文件" : t("dirEmpty"))
+    el.classList.add("click")
+    el.onclick = () => void openReader(row.name, row.path, row.names.length ? row.names.join("\n") : t("dirEmpty"))
+    box.appendChild(el)
+  }
+}
+
+function budgetBar(size, budget) {
+  const bar = document.createElement("span")
+  bar.className = "bar"
+  const ratio = budget ? size / budget : 0
+  if (ratio >= 1) bar.classList.add("full")
+  else if (ratio >= 0.8) bar.classList.add("warn")
+  const fill = document.createElement("i")
+  fill.style.width = Math.min(100, Math.round(ratio * 100)) + "%"
+  bar.appendChild(fill)
+  bar.title = humanSize(size) + " / " + humanSize(budget)
+  return bar
+}
+
+// 读文件用 host.readFile：只显示前 200 行，全文仍在磁盘上。
+async function openReader(name, path, preset) {
+  const mask = document.createElement("div")
+  mask.className = "reader-mask"
+  const box = document.createElement("div")
+  box.className = "reader"
+  const head = document.createElement("div")
+  head.className = "reader-head"
+  const title = document.createElement("span")
+  title.className = "reader-name"
+  title.textContent = name
+  head.appendChild(title)
+  const close = button(t("readerClose"), "", () => mask.remove())
+  mask.onclick = (event) => {
+    if (event.target === mask) mask.remove()
+  }
+  const body = document.createElement("pre")
+  body.className = "reader-body"
+  box.append(head, body)
+  mask.appendChild(box)
+  document.body.appendChild(mask)
+
+  let text = preset || ""
+  if (!text) {
+    try {
+      const result = await host.readFile(path)
+      text = String((result && result.content) || "")
+    } catch (error) {
+      text = String((error && error.code) || t("readFail"))
+    }
+  }
+  const lines = text.split(/\r?\n/)
+  body.textContent = lines.slice(0, 200).join("\n") || t("dirEmpty")
+  if (lines.length > 200) {
+    const note = document.createElement("div")
+    note.className = "reader-note"
+    note.textContent = t("readerTruncated") + " \u00b7 " + lines.length + " 行"
+    box.appendChild(note)
+  }
+  const copy = button(t("readerCopy"), "accent", async () => {
+    try {
+      await host.writeClipboard(text)
+      toast(t("copyDone"), "success")
+    } catch (error) {
+      toast(String((error && error.code) || "ERR"), "error")
+    }
+  })
+  head.append(copy, close)
 }
 
 function humanSize(size) {
