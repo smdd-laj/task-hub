@@ -130,6 +130,16 @@
   .file.missing { opacity: 0.55; }
   .file.click { cursor: pointer; }
   .file.click:hover { color: var(--accent); }
+  .file.coord { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+  .file.dir {
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    border: 1px dashed var(--accent);
+    color: var(--accent);
+  }
+  .file.dir:hover { background: color-mix(in srgb, var(--accent) 24%, transparent); }
+  .file.dir::before { content: "\25b8 "; color: var(--accent); opacity: .8; }
+  .dirs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 0 8px; border-bottom: 1px solid var(--line); }
+  .dirs-label { font-size: 11px; color: var(--hint); }
   .file.bad { color: var(--error-text, #c0392b); border: 1px solid var(--error-text, #c0392b); }
   .bar { display: inline-block; width: 30px; height: 4px; border-radius: 2px; background: var(--line); margin-inline-start: 5px; vertical-align: middle; overflow: hidden; }
   .bar i { display: block; height: 100%; background: var(--accent); }

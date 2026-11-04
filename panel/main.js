@@ -1848,6 +1848,17 @@ ${GUEST_UI_LOOK_CSS}`;
       nextRun: (time) => "next " + time,
       runsOf: (a, b) => b > 0 ? a + "/" + b : String(a),
       converge: "Tidy",
+      folders: "Folders",
+      fileRole: (name) => {
+        if (name === "HEAD.md") return "Current state: where things stand, overwritten every round";
+        if (name === "SUMMARY.md") return "Timeline of settled conclusions";
+        if (name === "RUNBOOK.md") return "How to run it: environment, start, release, build, verify, pitfalls";
+        if (name === "DECISIONS.md") return "Long-lived decisions: why it is built this way";
+        if (name.startsWith("progress/")) return "Each session's own process log, one file per session";
+        if (name.startsWith("deliverables/")) return "Finished deliverables: test package, design, DMS draft, checklists";
+        if (name.startsWith("archive/")) return "Archived history, read only";
+        return "";
+      },
       convergeHint: (who) => "Ask " + who + " to shrink this file",
       convergeQueued: "Switched to the owner, the tidy-up brief is in its chat box",
       noOwner: "No session owns this file",
@@ -1865,7 +1876,7 @@ ${GUEST_UI_LOOK_CSS}`;
       settleQueued: "Switched to the coordinator, the tidy-up brief is in its chat box",
       settlePrompt: (title, dir) => 'Tidy task "' + title + '" now, following rules/task-collab.md section 8, and report only after all four steps.\n\n1. Summarize: read ' + dir + "/HEAD.md, SUMMARY.md, RUNBOOK.md and the recently changed progress-*.md; overwrite HEAD.md with the current state (<=40 lines: state / doing / blocked / next / sources). Do not append.\n2. Archive SUMMARY.md yourself when it exceeds 300 lines. For a progress-<id>.md over 400 lines, tell the session that owns it to compress and archive its own file; never rewrite another session's progress. Before archiving, lift reusable operating knowledge into RUNBOOK.md across seven buckets: deployment chain (repo to branch to pipeline to domain, rollback point), environment, git (baseline, worktree, merge order, conflicts), simulator or device runs, build, verification, pitfalls.\n3. Tidy: move finished deliverables scattered in the task folder (test package, design, DMS draft, config change log, checklists, pending replies, message drafts) into " + dir + "/deliverables/. Move only what is clearly a deliverable; list the uncertain ones for me. Delete nothing.\n4. Report: one line on which files changed, how many lines were archived, and HEAD in three sentences; list anything that needs my decision separately.\n\nCredentials: write where they live, never their value. Do not touch business code, do not commit, push or merge.",
       patrol: "Run a patrol",
-      patrolPrompt: (title, dir) => 'Run one patrol round for task "' + title + '" as the coordinator. Read C:\\Users\\HUAWEI\\.task-hub\\tasks.json and ' + dir + ', then SUMMARY.md and the progress-*.md that changed this round. Sort every member into running / can-advance / needs-user / done. Send only the can-advance ones a four-part message (new info / one checkable action / stop condition / which file to write, with 【回话】 and returnResult). Append sourced conclusions to SUMMARY.md. Ask me only on hard boundaries (production change, deleting data, merging master or release, messaging outside systems); settle wording and implementation choices from the records yourself and say what you decided. Report every member as "name + full session id".',
+      patrolPrompt: (title, dir) => 'Run one patrol round for task "' + title + '" as the coordinator. Read C:\\Users\\HUAWEI\\.task-hub\\tasks.json and ' + dir + ', then HEAD.md, SUMMARY.md, RUNBOOK.md and DECISIONS.md, plus only the last three sections of the progress files that changed this round. Sort every member into running / can-advance / needs-user / done. Send only the can-advance ones a four-part message (new info / one checkable action / stop condition / which file to write, with 【回话】 and returnResult). Append sourced conclusions to SUMMARY.md. Ask me only on hard boundaries (production change, deleting data, merging master or release, messaging outside systems); settle wording and implementation choices from the records yourself and say what you decided. Move loose deliverables into deliverables/ before you report. Report every member as "name + full session id".',
       summarize: "Ask coordinator",
       jumpCoord: "Open coordinator",
       summaryQueued: "Switched to the coordinator, prompt is in its chat box",
@@ -1873,6 +1884,8 @@ ${GUEST_UI_LOOK_CSS}`;
       titlePrompt: (title, dir) => 'Tidy the session names for task "' + title + '". Read tasks.json and ' + dir + ', then for every member set alias to "<short project> - <what it is doing now>": take the short project name from its worktree or directory (for example 微服务, 收银后端, goframe, cashier, H5), and describe the current concrete job from the newest progress file rather than the opening greeting. Rename the session itself with session_rename when you are sure; skip when the evidence is thin and list those instead. Write the result back to tasks.json and report each change as old -> new with the reason.',
       coord: "coordinator",
       coordGroup: "coordinator here",
+      coordProgress: "Coordinator progress",
+      noProgress: "no progress file yet",
       setCoord: "Make coordinator",
       clearCoord: "Unset coordinator",
       compose: "To chat box",
@@ -1976,6 +1989,17 @@ ${GUEST_UI_LOOK_CSS}`;
       nextRun: (time) => "下次 " + time,
       runsOf: (a, b) => b > 0 ? a + "/" + b : String(a),
       converge: "收",
+      folders: "目录",
+      fileRole: (name) => {
+        if (name === "HEAD.md") return "当前状态：现在到哪了，每轮覆盖写";
+        if (name === "SUMMARY.md") return "已定结论的时间线";
+        if (name === "RUNBOOK.md") return "怎么让它跑起来：环境、启动、发布、构建、验证、坑";
+        if (name === "DECISIONS.md") return "长期口径：为什么这么定";
+        if (name.startsWith("progress/")) return "各会话的过程日志，一个会话一份";
+        if (name.startsWith("deliverables/")) return "成品：提测资料、方案、工单草稿、清单";
+        if (name.startsWith("archive/")) return "历史原文，只读";
+        return "";
+      },
       convergeHint: (who) => "让" + who + "收敛这个文件",
       convergeQueued: "已切到文件所属会话，收敛指令在输入框里",
       noOwner: "找不到这个文件所属的会话",
@@ -1993,7 +2017,7 @@ ${GUEST_UI_LOOK_CSS}`;
       settleQueued: "已切到协调会话，收拢指令在它的输入框里",
       settlePrompt: (title, dir) => "现在对任务「" + title + "」做一次收拢，按 rules/task-collab.md 第八节执行，四步做完再回报。\n\n1. 汇总：读 " + dir + "/HEAD.md、SUMMARY.md、RUNBOOK.md 和最近变化的 progress-*.md，把 HEAD.md 覆盖写成当前状态（≤160 行：状态 / 正在做 / 卡在哪 / 下一步 / 出处），不追加。\n2. 归档：SUMMARY.md 超过 300 行由你归档；某份 progress-<id>.md 超过 400 行的，通知写它的那个会话自己压缩归档，你不代改别人的 progress。归档前把可复用的操作知识提到 RUNBOOK.md，按七类扫：部署链条（仓→分支→流水线→域名，回滚点）、环境、git（基线/worktree/合并顺序/冲突）、模拟运行（模拟器/APK/设备号/登录）、构建、验证、踩坑。\n3. 整理：把散在任务目录里的成品（提测资料、方案、DMS 工单草稿、配置变更记录、清单、待发回复、沟通文本）移进 " + dir + "/deliverables/；只移动明确是成品的，拿不准的列出来问我，不删任何文件。\n4. 回报：一行说清改了哪些文件、归档了多少行、HEAD 现在的三句话；需要我拍板的单独列。\n\n凭据只写位置不写值；不要动业务代码，不要提交、推送、合并。",
       patrol: "让协调巡检",
-      patrolPrompt: (title, dir) => "现在按信箱调度跑一轮巡检任务「" + title + "」。先读 C:\\Users\\HUAWEI\\.task-hub\\tasks.json 和 " + dir + "，再读 SUMMARY.md 与本轮有变化的 progress-*.md。对每个成员分在跑 / 可推进 / 等你定 / 已完成；只给可推进的发一条四段式消息（新信息 / 一个可验收动作 / 停止条件 / 写回路径，带【回话】和 returnResult）；有出处的结论写进 SUMMARY.md；命中硬边界（生产改动、删数据、合并 master 或 release、对外发消息）才问我，口径与实现选择按记录自己定并写明依据。成员一律报「名称 + 完整 session id」。",
+      patrolPrompt: (title, dir) => "现在按信箱调度跑一轮巡检任务「" + title + "」。先读 C:\\Users\\HUAWEI\\.task-hub\\tasks.json 和 " + dir + "，再读 HEAD.md / SUMMARY.md / RUNBOOK.md / DECISIONS.md，以及本轮有变化的 progress 的最后三段。对每个成员分在跑 / 可推进 / 等你定 / 已完成；只给可推进的发一条四段式消息（新信息 / 一个可验收动作 / 停止条件 / 写回路径，带【回话】和 returnResult）；有出处的结论写进 SUMMARY.md；命中硬边界（生产改动、删数据、合并 master 或 release、对外发消息）才问我，口径与实现选择按记录自己定并写明依据。顺手把散落在目录里的成品移进 deliverables/。成员一律报「名称 + 完整 session id」。",
       summarize: "让协调总结",
       jumpCoord: "跳到协调",
       summaryQueued: "已切到协调会话，提示词在它的输入框里",
@@ -2001,6 +2025,8 @@ ${GUEST_UI_LOOK_CSS}`;
       titlePrompt: (title, dir) => "整理任务「" + title + "」下所有会话的名字。先读 tasks.json 和 " + dir + "。对每个成员，把 alias 设成「项目简称 - 现在在做什么」：项目简称取它所在 worktree 或目录名（例如 微服务、收银后端、goframe、cashier、H5），具体任务从最新的 progress 文件里看，不要照抄标题开头那句问候。有把握时用 session_rename 把会话本体也改成同样的名字；证据不足的跳过并在回报里列出来。改完写回 tasks.json，并把每处改动以「旧名 → 新名（依据）」列给我。",
       coord: "协调",
       coordGroup: "协调所在",
+      coordProgress: "协调会话进度",
+      noProgress: "还没有 progress 文件",
       setCoord: "标识协调会话",
       clearCoord: "取消协调",
       compose: "放入聊天框",
@@ -3230,7 +3256,9 @@ ${GUEST_UI_LOOK_CSS}`;
       const el3 = document.createElement("span");
       el3.className = "file" + (row.info || row.group === "dir" ? "" : " missing");
       el3.textContent = row.name + " · " + label;
-      el3.title = row.path;
+      const role = t("fileRole")(row.name);
+      el3.title = row.path + (role ? "\n" + role : "");
+      if (row.group === "dir") el3.classList.add("dir");
       if (row.group === "core" || row.group === "progress") {
         const owner = row.group === "progress" ? progressOwner(task, row.name) : null;
         const who = owner ? owner.alias || owner.title || owner.sessionId.slice(-6) : t("ownerCoord");
@@ -3261,20 +3289,48 @@ ${GUEST_UI_LOOK_CSS}`;
       box.appendChild(el3);
     }
     const progressRows = rows.filter((r) => r.group === "progress");
-    if (progressRows.length) {
-      const total = progressRows.reduce((a, r) => a + r.size, 0);
-      const max = progressRows.reduce((a, r) => Math.max(a, r.size), 0);
+    const coordSuffix = task.coordinator ? String(task.coordinator).slice(-6) : "";
+    const coordRow = coordSuffix ? progressRows.find((r) => r.name === "progress-" + coordSuffix + ".md") : null;
+    const memberRows = coordRow ? progressRows.filter((r) => r !== coordRow) : progressRows;
+    if (coordRow) {
+      const el3 = makeChip(coordRow, coordRow.info ? humanSize(coordRow.size) : "—");
+      el3.classList.add("coord");
+      if (coordRow.info) {
+        el3.classList.add("click");
+        el3.onclick = () => void openReader(coordRow.name, coordRow.path);
+      }
+      const tag = document.createElement("span");
+      tag.className = "tag coord";
+      tag.textContent = t("coord");
+      el3.appendChild(tag);
+      if (coordRow.budget && coordRow.size > 0) el3.appendChild(budgetBar(coordRow.size, coordRow.budget));
+      if (coordRow.size >= coordRow.budget) el3.classList.add("bad");
+      box.appendChild(el3);
+    } else if (task.coordinator) {
+      const el3 = document.createElement("span");
+      el3.className = "file coord missing";
+      el3.textContent = t("coordProgress") + " · " + t("noProgress");
+      el3.title = task.coordinator;
+      const tag = document.createElement("span");
+      tag.className = "tag coord";
+      tag.textContent = t("coord");
+      el3.appendChild(tag);
+      box.appendChild(el3);
+    }
+    if (memberRows.length) {
+      const total = memberRows.reduce((a, r) => a + r.size, 0);
+      const max = memberRows.reduce((a, r) => Math.max(a, r.size), 0);
       const head = document.createElement("span");
-      head.className = "file click";
-      head.textContent = "progress/ · " + progressRows.length + " · " + humanSize(total) + " · max " + humanSize(max);
-      head.title = S.filesOpen ? t("foldFiles") : t("unfoldFiles")(progressRows.length);
+      head.className = "file click dir";
+      head.textContent = "progress/ · " + memberRows.length + " · " + humanSize(total) + " · max " + humanSize(max);
+      head.title = S.filesOpen ? t("foldFiles") : t("unfoldFiles")(memberRows.length);
       head.onclick = () => {
         S.filesOpen = !S.filesOpen;
         void renderDetail();
       };
       box.appendChild(head);
       if (S.filesOpen) {
-        for (const row of progressRows) {
+        for (const row of memberRows) {
           const el3 = makeChip(row, row.info ? humanSize(row.size) : "—");
           if (row.info) {
             el3.classList.add("click");
@@ -3284,15 +3340,25 @@ ${GUEST_UI_LOOK_CSS}`;
           if (row.size >= row.budget) el3.classList.add("bad");
           box.appendChild(el3);
         }
-      } else if (progressRows.some((r) => r.size >= r.budget)) {
+      } else if (memberRows.some((r) => r.size >= r.budget)) {
         head.classList.add("bad");
       }
     }
-    for (const row of rows.filter((r) => r.group === "dir")) {
-      const el3 = makeChip(row, row.count ? row.count + " 个文件" : t("dirEmpty"));
-      el3.classList.add("click");
-      el3.onclick = () => void openReader(row.name, row.path, row.names.length ? row.names.join("\n") : t("dirEmpty"));
-      box.appendChild(el3);
+    const dirRows = rows.filter((r) => r.group === "dir");
+    if (dirRows.length) {
+      const dirs = document.createElement("div");
+      dirs.className = "dirs";
+      const label = document.createElement("span");
+      label.className = "dirs-label";
+      label.textContent = t("folders");
+      dirs.appendChild(label);
+      for (const row of dirRows) {
+        const el3 = makeChip(row, row.count ? row.count + " 个文件" : t("dirEmpty"));
+        el3.classList.add("click");
+        el3.onclick = () => void openReader(row.name, row.path, row.names.length ? row.names.join("\n") : t("dirEmpty"));
+        dirs.appendChild(el3);
+      }
+      box.after(dirs);
     }
   }
   function progressOwner(task, name) {

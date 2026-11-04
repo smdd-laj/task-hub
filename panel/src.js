@@ -60,6 +60,17 @@ const DICT = {
     nextRun: (time) => "next " + time,
     runsOf: (a, b) => (b > 0 ? a + "/" + b : String(a)),
     converge: "Tidy",
+    folders: "Folders",
+    fileRole: (name) => {
+      if (name === "HEAD.md") return "Current state: where things stand, overwritten every round";
+      if (name === "SUMMARY.md") return "Timeline of settled conclusions";
+      if (name === "RUNBOOK.md") return "How to run it: environment, start, release, build, verify, pitfalls";
+      if (name === "DECISIONS.md") return "Long-lived decisions: why it is built this way";
+      if (name.startsWith("progress/")) return "Each session's own process log, one file per session";
+      if (name.startsWith("deliverables/")) return "Finished deliverables: test package, design, DMS draft, checklists";
+      if (name.startsWith("archive/")) return "Archived history, read only";
+      return "";
+    },
     convergeHint: (who) => "Ask " + who + " to shrink this file",
     convergeQueued: "Switched to the owner, the tidy-up brief is in its chat box",
     noOwner: "No session owns this file",
@@ -86,13 +97,15 @@ const DICT = {
       "Credentials: write where they live, never their value. Do not touch business code, do not commit, push or merge.",
     patrol: "Run a patrol",
     patrolPrompt: (title, dir) =>
-      "Run one patrol round for task \"" + title + "\" as the coordinator. Read C:\\Users\\HUAWEI\\.task-hub\\tasks.json and " + dir + ", then SUMMARY.md and the progress-*.md that changed this round. Sort every member into running / can-advance / needs-user / done. Send only the can-advance ones a four-part message (new info / one checkable action / stop condition / which file to write, with 【回话】 and returnResult). Append sourced conclusions to SUMMARY.md. Ask me only on hard boundaries (production change, deleting data, merging master or release, messaging outside systems); settle wording and implementation choices from the records yourself and say what you decided. Report every member as \"name + full session id\".",
+      "Run one patrol round for task \"" + title + "\" as the coordinator. Read C:\\Users\\HUAWEI\\.task-hub\\tasks.json and " + dir + ", then HEAD.md, SUMMARY.md, RUNBOOK.md and DECISIONS.md, plus only the last three sections of the progress files that changed this round. Sort every member into running / can-advance / needs-user / done. Send only the can-advance ones a four-part message (new info / one checkable action / stop condition / which file to write, with 【回话】 and returnResult). Append sourced conclusions to SUMMARY.md. Ask me only on hard boundaries (production change, deleting data, merging master or release, messaging outside systems); settle wording and implementation choices from the records yourself and say what you decided. Move loose deliverables into deliverables/ before you report. Report every member as \"name + full session id\".",
     summarize: "Ask coordinator", jumpCoord: "Open coordinator", summaryQueued: "Switched to the coordinator, prompt is in its chat box",
     summaryPrompt: (title, dir) =>
       "Summarize task \"" + title + "\" now. Read " + dir + "/SUMMARY.md and every progress-*.md, then answer in six parts: 1) one-line status, 2) done, 3) in progress, 4) blocked / waiting on whom, 5) pitfalls hit so far with where they live, 6) next three actions. Append settled conclusions to SUMMARY.md with their source; leave open items in the progress files.",
     titlePrompt: (title, dir) =>
       "Tidy the session names for task \"" + title + "\". Read tasks.json and " + dir + ", then for every member set alias to \"<short project> - <what it is doing now>\": take the short project name from its worktree or directory (for example 微服务, 收银后端, goframe, cashier, H5), and describe the current concrete job from the newest progress file rather than the opening greeting. Rename the session itself with session_rename when you are sure; skip when the evidence is thin and list those instead. Write the result back to tasks.json and report each change as old -> new with the reason.",
-    coord: "coordinator", coordGroup: "coordinator here", setCoord: "Make coordinator", clearCoord: "Unset coordinator",
+    coord: "coordinator", coordGroup: "coordinator here",
+    coordProgress: "Coordinator progress",
+    noProgress: "no progress file yet", setCoord: "Make coordinator", clearCoord: "Unset coordinator",
     compose: "To chat box", composed: "Added to the chat box, send it yourself",
     remove: "Remove", open: "Open this session", gone: "Session not found",
     save: "Save", cancel: "Cancel", title: "Task name", goal: "What it is", accept: "Done when",
@@ -143,6 +156,17 @@ const DICT = {
     nextRun: (time) => "下次 " + time,
     runsOf: (a, b) => (b > 0 ? a + "/" + b : String(a)),
     converge: "收",
+    folders: "目录",
+    fileRole: (name) => {
+      if (name === "HEAD.md") return "当前状态：现在到哪了，每轮覆盖写";
+      if (name === "SUMMARY.md") return "已定结论的时间线";
+      if (name === "RUNBOOK.md") return "怎么让它跑起来：环境、启动、发布、构建、验证、坑";
+      if (name === "DECISIONS.md") return "长期口径：为什么这么定";
+      if (name.startsWith("progress/")) return "各会话的过程日志，一个会话一份";
+      if (name.startsWith("deliverables/")) return "成品：提测资料、方案、工单草稿、清单";
+      if (name.startsWith("archive/")) return "历史原文，只读";
+      return "";
+    },
     convergeHint: (who) => "让" + who + "收敛这个文件",
     convergeQueued: "已切到文件所属会话，收敛指令在输入框里",
     noOwner: "找不到这个文件所属的会话",
@@ -170,13 +194,15 @@ const DICT = {
       "凭据只写位置不写值；不要动业务代码，不要提交、推送、合并。",
     patrol: "让协调巡检",
     patrolPrompt: (title, dir) =>
-      "现在按信箱调度跑一轮巡检任务「" + title + "」。先读 C:\\Users\\HUAWEI\\.task-hub\\tasks.json 和 " + dir + "，再读 SUMMARY.md 与本轮有变化的 progress-*.md。对每个成员分在跑 / 可推进 / 等你定 / 已完成；只给可推进的发一条四段式消息（新信息 / 一个可验收动作 / 停止条件 / 写回路径，带【回话】和 returnResult）；有出处的结论写进 SUMMARY.md；命中硬边界（生产改动、删数据、合并 master 或 release、对外发消息）才问我，口径与实现选择按记录自己定并写明依据。成员一律报「名称 + 完整 session id」。",
+      "现在按信箱调度跑一轮巡检任务「" + title + "」。先读 C:\\Users\\HUAWEI\\.task-hub\\tasks.json 和 " + dir + "，再读 HEAD.md / SUMMARY.md / RUNBOOK.md / DECISIONS.md，以及本轮有变化的 progress 的最后三段。对每个成员分在跑 / 可推进 / 等你定 / 已完成；只给可推进的发一条四段式消息（新信息 / 一个可验收动作 / 停止条件 / 写回路径，带【回话】和 returnResult）；有出处的结论写进 SUMMARY.md；命中硬边界（生产改动、删数据、合并 master 或 release、对外发消息）才问我，口径与实现选择按记录自己定并写明依据。顺手把散落在目录里的成品移进 deliverables/。成员一律报「名称 + 完整 session id」。",
     summarize: "让协调总结", jumpCoord: "跳到协调", summaryQueued: "已切到协调会话，提示词在它的输入框里",
     summaryPrompt: (title, dir) =>
       "现在总结任务「" + title + "」。先读 " + dir + "/SUMMARY.md 和所有 progress-*.md，然后按六段回答：1) 一句话现状 2) 已完成 3) 进行中 4) 卡住的地方与在等谁 5) 已经踩过的坑及各自位置 6) 接下来三步。把已定的结论带出处追加进 SUMMARY.md，未定的留在各 progress 文件里。",
     titlePrompt: (title, dir) =>
       "整理任务「" + title + "」下所有会话的名字。先读 tasks.json 和 " + dir + "。对每个成员，把 alias 设成「项目简称 - 现在在做什么」：项目简称取它所在 worktree 或目录名（例如 微服务、收银后端、goframe、cashier、H5），具体任务从最新的 progress 文件里看，不要照抄标题开头那句问候。有把握时用 session_rename 把会话本体也改成同样的名字；证据不足的跳过并在回报里列出来。改完写回 tasks.json，并把每处改动以「旧名 → 新名（依据）」列给我。",
-    coord: "协调", coordGroup: "协调所在", setCoord: "标识协调会话", clearCoord: "取消协调",
+    coord: "协调", coordGroup: "协调所在",
+    coordProgress: "协调会话进度",
+    noProgress: "还没有 progress 文件", setCoord: "标识协调会话", clearCoord: "取消协调",
     compose: "放入聊天框", composed: "已放入聊天框，确认后自己发送",
     remove: "移除", open: "打开这个会话", gone: "会话不存在",
     save: "保存", cancel: "取消", title: "任务名", goal: "做什么", accept: "验收是什么",
@@ -1480,7 +1506,9 @@ async function renderFiles(task, box) {
     const el = document.createElement("span")
     el.className = "file" + (row.info || row.group === "dir" ? "" : " missing")
     el.textContent = row.name + " \u00b7 " + label
-    el.title = row.path
+    const role = t("fileRole")(row.name)
+    el.title = row.path + (role ? "\n" + role : "")
+    if (row.group === "dir") el.classList.add("dir")
     if (row.group === "core" || row.group === "progress") {
       const owner = row.group === "progress" ? progressOwner(task, row.name) : null
       const who = owner ? (owner.alias || owner.title || owner.sessionId.slice(-6)) : t("ownerCoord")
@@ -1513,21 +1541,53 @@ async function renderFiles(task, box) {
   }
 
   const progressRows = rows.filter((r) => r.group === "progress")
-  if (progressRows.length) {
-    const total = progressRows.reduce((a, r) => a + r.size, 0)
-    const max = progressRows.reduce((a, r) => Math.max(a, r.size), 0)
+  // 协调会话自己的那份单独拎出来：它既是成员，也承担收拢职责，混在成员里看不出来。
+  const coordSuffix = task.coordinator ? String(task.coordinator).slice(-6) : ""
+  const coordRow = coordSuffix ? progressRows.find((r) => r.name === "progress-" + coordSuffix + ".md") : null
+  const memberRows = coordRow ? progressRows.filter((r) => r !== coordRow) : progressRows
+
+  if (coordRow) {
+    const el = makeChip(coordRow, coordRow.info ? humanSize(coordRow.size) : "\u2014")
+    el.classList.add("coord")
+    if (coordRow.info) {
+      el.classList.add("click")
+      el.onclick = () => void openReader(coordRow.name, coordRow.path)
+    }
+    const tag = document.createElement("span")
+    tag.className = "tag coord"
+    tag.textContent = t("coord")
+    el.appendChild(tag)
+    if (coordRow.budget && coordRow.size > 0) el.appendChild(budgetBar(coordRow.size, coordRow.budget))
+    if (coordRow.size >= coordRow.budget) el.classList.add("bad")
+    box.appendChild(el)
+  } else if (task.coordinator) {
+    // 协调会话还没写过 progress 也要露一行，否则看不出谁是协调、有没有进度。
+    const el = document.createElement("span")
+    el.className = "file coord missing"
+    el.textContent = t("coordProgress") + " \u00b7 " + t("noProgress")
+    el.title = task.coordinator
+    const tag = document.createElement("span")
+    tag.className = "tag coord"
+    tag.textContent = t("coord")
+    el.appendChild(tag)
+    box.appendChild(el)
+  }
+
+  if (memberRows.length) {
+    const total = memberRows.reduce((a, r) => a + r.size, 0)
+    const max = memberRows.reduce((a, r) => Math.max(a, r.size), 0)
     const head = document.createElement("span")
-    head.className = "file click"
+    head.className = "file click dir"
     head.textContent =
-      "progress/ \u00b7 " + progressRows.length + " \u00b7 " + humanSize(total) + " \u00b7 max " + humanSize(max)
-    head.title = S.filesOpen ? t("foldFiles") : t("unfoldFiles")(progressRows.length)
+      "progress/ \u00b7 " + memberRows.length + " \u00b7 " + humanSize(total) + " \u00b7 max " + humanSize(max)
+    head.title = S.filesOpen ? t("foldFiles") : t("unfoldFiles")(memberRows.length)
     head.onclick = () => {
       S.filesOpen = !S.filesOpen
       void renderDetail()
     }
     box.appendChild(head)
     if (S.filesOpen) {
-      for (const row of progressRows) {
+      for (const row of memberRows) {
         const el = makeChip(row, row.info ? humanSize(row.size) : "\u2014")
         if (row.info) {
           el.classList.add("click")
@@ -1537,16 +1597,26 @@ async function renderFiles(task, box) {
         if (row.size >= row.budget) el.classList.add("bad")
         box.appendChild(el)
       }
-    } else if (progressRows.some((r) => r.size >= r.budget)) {
+    } else if (memberRows.some((r) => r.size >= r.budget)) {
       head.classList.add("bad")
     }
   }
 
-  for (const row of rows.filter((r) => r.group === "dir")) {
-    const el = makeChip(row, row.count ? row.count + " 个文件" : t("dirEmpty"))
-    el.classList.add("click")
-    el.onclick = () => void openReader(row.name, row.path, row.names.length ? row.names.join("\n") : t("dirEmpty"))
-    box.appendChild(el)
+  const dirRows = rows.filter((r) => r.group === "dir")
+  if (dirRows.length) {
+    const dirs = document.createElement("div")
+    dirs.className = "dirs"
+    const label = document.createElement("span")
+    label.className = "dirs-label"
+    label.textContent = t("folders")
+    dirs.appendChild(label)
+    for (const row of dirRows) {
+      const el = makeChip(row, row.count ? row.count + " 个文件" : t("dirEmpty"))
+      el.classList.add("click")
+      el.onclick = () => void openReader(row.name, row.path, row.names.length ? row.names.join("\n") : t("dirEmpty"))
+      dirs.appendChild(el)
+    }
+    box.after(dirs)
   }
 }
 
