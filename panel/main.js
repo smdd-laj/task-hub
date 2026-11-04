@@ -1797,7 +1797,7 @@ ${GUEST_UI_LOOK_CSS}`;
       waiting: "waiting",
       idle: "idle",
       failed: "failed",
-      unknown: "\u2014",
+      unknown: "—",
       lastTurn: "last",
       done: "done",
       noFolder: "no folder",
@@ -1822,13 +1822,16 @@ ${GUEST_UI_LOOK_CSS}`;
       creating: "Creating",
       orphan: "Created but not saved to the roster",
       fillPrompt: (title, dir, member) => 'For task "' + title + '" add helper sessions for the worktree of "' + member + '". Read ' + dir + ` first. Keep each worktree to at most three sessions: one main line plus up to two helpers for small jobs such as reading code, checking a fact, or a quick question. If that worktree has no helper yet, create one with session.create in the same directory, give it a title naming the worktree and the purpose, and send one short first message: task name, progress folder, its own progress-<last 6 of its id>.md, and what to do. Register it in tasks.json members with role: "helper" and log it in that worktree's .dispatch.json. If it already has three, say which ones to merge or close instead. Start every message with your own role (main or helper).`,
+      settle: "Collect and tidy",
+      settleQueued: "Switched to the coordinator, the tidy-up brief is in its chat box",
+      settlePrompt: (title, dir) => 'Tidy task "' + title + '" now, following rules/task-collab.md section 8, and report only after all four steps.\n\n1. Summarize: read ' + dir + "/HEAD.md, SUMMARY.md, RUNBOOK.md and the recently changed progress-*.md; overwrite HEAD.md with the current state (<=40 lines: state / doing / blocked / next / sources). Do not append.\n2. Archive: when SUMMARY.md exceeds 300 lines or a progress-<id>.md exceeds 400 lines, move the earliest half to " + dir + "/archive/<name>-<YYYY-MM>.md, keep the latest half plus the pointer line at the top. Before archiving, lift any reusable operating knowledge (start commands, environment addresses, config ids, pitfalls) into RUNBOOK.md.\n3. Tidy: move finished deliverables scattered in the task folder (test package, design, DMS draft, config change log, checklists, pending replies, message drafts) into " + dir + "/deliverables/. Move only what is clearly a deliverable; list the uncertain ones for me. Delete nothing.\n4. Report: one line on which files changed, how many lines were archived, and HEAD in three sentences; list anything that needs my decision separately.\n\nCredentials: write where they live, never their value. Do not touch business code, do not commit, push or merge.",
       patrol: "Run a patrol",
-      patrolPrompt: (title, dir) => 'Run one patrol round for task "' + title + '" as the coordinator. Read C:\\Users\\HUAWEI\\.task-hub\\tasks.json and ' + dir + ', then SUMMARY.md and the progress-*.md that changed this round. Sort every member into running / can-advance / needs-user / done. Send only the can-advance ones a four-part message (new info / one checkable action / stop condition / which file to write, with \u3010\u56DE\u8BDD\u3011 and returnResult). Append sourced conclusions to SUMMARY.md. Ask me only on hard boundaries (production change, deleting data, merging master or release, messaging outside systems); settle wording and implementation choices from the records yourself and say what you decided. Report every member as "name + full session id".',
+      patrolPrompt: (title, dir) => 'Run one patrol round for task "' + title + '" as the coordinator. Read C:\\Users\\HUAWEI\\.task-hub\\tasks.json and ' + dir + ', then SUMMARY.md and the progress-*.md that changed this round. Sort every member into running / can-advance / needs-user / done. Send only the can-advance ones a four-part message (new info / one checkable action / stop condition / which file to write, with 【回话】 and returnResult). Append sourced conclusions to SUMMARY.md. Ask me only on hard boundaries (production change, deleting data, merging master or release, messaging outside systems); settle wording and implementation choices from the records yourself and say what you decided. Report every member as "name + full session id".',
       summarize: "Ask coordinator",
       jumpCoord: "Open coordinator",
       summaryQueued: "Switched to the coordinator, prompt is in its chat box",
       summaryPrompt: (title, dir) => 'Summarize task "' + title + '" now. Read ' + dir + "/SUMMARY.md and every progress-*.md, then answer in six parts: 1) one-line status, 2) done, 3) in progress, 4) blocked / waiting on whom, 5) pitfalls hit so far with where they live, 6) next three actions. Append settled conclusions to SUMMARY.md with their source; leave open items in the progress files.",
-      titlePrompt: (title, dir) => 'Tidy the session names for task "' + title + '". Read tasks.json and ' + dir + ', then for every member set alias to "<short project> - <what it is doing now>": take the short project name from its worktree or directory (for example \u5FAE\u670D\u52A1, \u6536\u94F6\u540E\u7AEF, goframe, cashier, H5), and describe the current concrete job from the newest progress file rather than the opening greeting. Rename the session itself with session_rename when you are sure; skip when the evidence is thin and list those instead. Write the result back to tasks.json and report each change as old -> new with the reason.',
+      titlePrompt: (title, dir) => 'Tidy the session names for task "' + title + '". Read tasks.json and ' + dir + ', then for every member set alias to "<short project> - <what it is doing now>": take the short project name from its worktree or directory (for example 微服务, 收银后端, goframe, cashier, H5), and describe the current concrete job from the newest progress file rather than the opening greeting. Rename the session itself with session_rename when you are sure; skip when the evidence is thin and list those instead. Write the result back to tasks.json and report each change as old -> new with the reason.',
       coord: "coordinator",
       coordGroup: "coordinator here",
       setCoord: "Make coordinator",
@@ -1860,96 +1863,99 @@ ${GUEST_UI_LOOK_CSS}`;
       thisSession: "this session"
     },
     zh: {
-      tasks: "\u4EFB\u52A1",
-      auto: "\u81EA\u52A8",
-      on: "\u5F00",
-      newTask: "\u65B0\u5EFA",
-      refresh: "\u5237\u65B0",
-      search: "\u641C\u7D22\u4EFB\u52A1",
-      sort: "\u6392\u5E8F",
-      manual: "\u624B\u52A8",
-      name: "\u540D\u79F0",
-      members: "\u4F1A\u8BDD\u6570",
-      none: "\u8FD8\u6CA1\u6709\u4EFB\u52A1",
-      noMatch: "\u6CA1\u6709\u5339\u914D\u7684\u4EFB\u52A1",
-      pick: "\u5DE6\u8FB9\u9009\u4E00\u4EF6\u4EFB\u52A1",
-      you: "\u4F60\u5728\u91CC\u9762",
-      edit: "\u7F16\u8F91",
-      addSession: "\u52A0\u4F1A\u8BDD",
-      delete: "\u5220\u9664",
-      confirm: "\u518D\u70B9\u5220\u9664",
-      progress: "\u8FDB\u5EA6\u76EE\u5F55",
-      copyPath: "\u590D\u5236\u8DEF\u5F84",
-      copyDone: "\u8DEF\u5F84\u5DF2\u590D\u5236",
-      external: "\u5916\u90E8",
-      unreadable: "\u5916\u90E8\u76EE\u5F55\uFF1A\u9762\u677F\u53EA\u8BB0\u5F55\u548C\u590D\u5236\u8DEF\u5F84\uFF0C\u4E0D\u8BFB\u53D6\u91CC\u9762\u7684\u6587\u4EF6\u3002",
-      readFail: "\u8BFB\u4E0D\u5230\u76EE\u5F55",
-      running: "\u8FD0\u884C\u4E2D",
-      runningChild: "\u5B50\u4EE3\u7406",
-      waiting: "\u7B49\u5F85",
-      idle: "\u7A7A\u95F2",
-      failed: "\u5931\u8D25",
-      unknown: "\u2014",
-      lastTurn: "\u4E0A\u8F6E",
-      done: "\u5B8C\u6210",
-      noFolder: "\u65E0\u76EE\u5F55",
-      roleMain: "\u4E3B\u7EBF",
-      roleHelper: "\u8F85\u52A9",
-      roleNone: "\u672A\u6807",
-      actions: "\u64CD\u4F5C",
-      setMain: "\u8BBE\u4E3A\u4E3B\u7EBF",
-      setHelper: "\u8BBE\u4E3A\u8F85\u52A9",
-      fillHelpers: "\u8865\u5145\u770B\u677F\u4F1A\u8BDD",
-      overCap: "\u8D85\u8FC7\u4E09\u4E2A",
-      noCoord: "\u8FD9\u4EF6\u4EFB\u52A1\u8FD8\u6CA1\u8BBE\u534F\u8C03\u4F1A\u8BDD",
-      copyId: "\u590D\u5236\u4F1A\u8BDD id",
-      alias: "\u663E\u793A\u540D",
-      setAlias: "\u6539\u6807\u9898",
-      tidyTitles: "\u8BA9\u534F\u8C03\u6574\u7406\u6807\u9898",
-      newSession: "\u65B0\u4F1A\u8BDD",
-      newSessionTitle: "\u4F1A\u8BDD\u540D",
-      newSessionRole: "\u89D2\u8272",
-      noDirectory: "\u8FD9\u4E00\u7EC4\u62FF\u4E0D\u5230\u7EDD\u5BF9\u8DEF\u5F84\uFF0C\u4E0D\u80FD\u5EFA\u4F1A\u8BDD",
-      sessionCreated: "\u5DF2\u5EFA\u4F1A\u8BDD",
-      creating: "\u521B\u5EFA\u4E2D",
-      orphan: "\u4F1A\u8BDD\u5DF2\u5EFA\uFF0C\u4F46\u6CA1\u5199\u8FDB\u540D\u518C",
-      fillPrompt: (title, dir, member) => "\u9488\u5BF9\u4EFB\u52A1\u300C" + title + "\u300D\uFF0C\u7ED9\u300C" + member + "\u300D\u6240\u5728\u7684 worktree \u8865\u5145\u8F85\u52A9\u4F1A\u8BDD\u3002\u5148\u8BFB " + dir + '\u3002\u6BCF\u4E2A worktree \u6700\u591A\u4E09\u4E2A\u4F1A\u8BDD\uFF1A\u4E00\u4E2A\u4E3B\u7EBF\u63A8\u8FDB\u4F1A\u8BDD\uFF0C\u53E6\u6709\u81F3\u591A\u4E24\u4E2A\u8F85\u52A9\u4F1A\u8BDD\uFF0C\u4E13\u95E8\u505A\u67E5\u4EE3\u7801\u3001\u6838\u4E8B\u5B9E\u3001\u5C0F\u95EE\u8BE2\u8FD9\u7C7B\u5C0F\u6D3B\u3002\u5982\u679C\u90A3\u4E2A worktree \u8FD8\u6CA1\u6709\u8F85\u52A9\u4F1A\u8BDD\uFF0C\u7528 session.create \u5728\u5B83\u7684\u540C\u76EE\u5F55\u5EFA\u4E00\u4E2A\uFF1A\u6807\u9898\u5199\u660E worktree \u540D\u548C\u7528\u9014\uFF1B\u9996\u6761\u6D88\u606F\u53EA\u5199\u56DB\u6837\u2014\u2014\u4EFB\u52A1\u540D\u3001\u8FDB\u5EA6\u76EE\u5F55\u3001\u5B83\u81EA\u5DF1\u7684 progress-<id\u540E6\u4F4D>.md\u3001\u8981\u5B83\u505A\u4EC0\u4E48\u3002\u5EFA\u5B8C\u5199\u8FDB tasks.json \u7684 members\uFF0C\u5E26 role: "helper"\uFF0C\u5E76\u5728\u8BE5 worktree \u7684 .dispatch.json \u8BB0\u4E00\u884C\u3002\u5DF2\u7ECF\u6EE1\u4E09\u4E2A\u7684\uFF0C\u8BF4\u660E\u54EA\u4E9B\u8BE5\u5408\u5E76\u6216\u7ED3\u675F\uFF0C\u4E0D\u8981\u518D\u52A0\u3002\u4F60\u53D1\u51FA\u7684\u6BCF\u6761\u6D88\u606F\u7B2C\u4E00\u884C\u5199\u660E\u81EA\u5DF1\u7684\u89D2\u8272\uFF08\u4E3B\u7EBF\u6216\u8F85\u52A9\uFF09\u3002',
-      patrol: "\u8BA9\u534F\u8C03\u5DE1\u68C0",
-      patrolPrompt: (title, dir) => "\u73B0\u5728\u6309\u4FE1\u7BB1\u8C03\u5EA6\u8DD1\u4E00\u8F6E\u5DE1\u68C0\u4EFB\u52A1\u300C" + title + "\u300D\u3002\u5148\u8BFB C:\\Users\\HUAWEI\\.task-hub\\tasks.json \u548C " + dir + "\uFF0C\u518D\u8BFB SUMMARY.md \u4E0E\u672C\u8F6E\u6709\u53D8\u5316\u7684 progress-*.md\u3002\u5BF9\u6BCF\u4E2A\u6210\u5458\u5206\u5728\u8DD1 / \u53EF\u63A8\u8FDB / \u7B49\u4F60\u5B9A / \u5DF2\u5B8C\u6210\uFF1B\u53EA\u7ED9\u53EF\u63A8\u8FDB\u7684\u53D1\u4E00\u6761\u56DB\u6BB5\u5F0F\u6D88\u606F\uFF08\u65B0\u4FE1\u606F / \u4E00\u4E2A\u53EF\u9A8C\u6536\u52A8\u4F5C / \u505C\u6B62\u6761\u4EF6 / \u5199\u56DE\u8DEF\u5F84\uFF0C\u5E26\u3010\u56DE\u8BDD\u3011\u548C returnResult\uFF09\uFF1B\u6709\u51FA\u5904\u7684\u7ED3\u8BBA\u5199\u8FDB SUMMARY.md\uFF1B\u547D\u4E2D\u786C\u8FB9\u754C\uFF08\u751F\u4EA7\u6539\u52A8\u3001\u5220\u6570\u636E\u3001\u5408\u5E76 master \u6216 release\u3001\u5BF9\u5916\u53D1\u6D88\u606F\uFF09\u624D\u95EE\u6211\uFF0C\u53E3\u5F84\u4E0E\u5B9E\u73B0\u9009\u62E9\u6309\u8BB0\u5F55\u81EA\u5DF1\u5B9A\u5E76\u5199\u660E\u4F9D\u636E\u3002\u6210\u5458\u4E00\u5F8B\u62A5\u300C\u540D\u79F0 + \u5B8C\u6574 session id\u300D\u3002",
-      summarize: "\u8BA9\u534F\u8C03\u603B\u7ED3",
-      jumpCoord: "\u8DF3\u5230\u534F\u8C03",
-      summaryQueued: "\u5DF2\u5207\u5230\u534F\u8C03\u4F1A\u8BDD\uFF0C\u63D0\u793A\u8BCD\u5728\u5B83\u7684\u8F93\u5165\u6846\u91CC",
-      summaryPrompt: (title, dir) => "\u73B0\u5728\u603B\u7ED3\u4EFB\u52A1\u300C" + title + "\u300D\u3002\u5148\u8BFB " + dir + "/SUMMARY.md \u548C\u6240\u6709 progress-*.md\uFF0C\u7136\u540E\u6309\u516D\u6BB5\u56DE\u7B54\uFF1A1) \u4E00\u53E5\u8BDD\u73B0\u72B6 2) \u5DF2\u5B8C\u6210 3) \u8FDB\u884C\u4E2D 4) \u5361\u4F4F\u7684\u5730\u65B9\u4E0E\u5728\u7B49\u8C01 5) \u5DF2\u7ECF\u8E29\u8FC7\u7684\u5751\u53CA\u5404\u81EA\u4F4D\u7F6E 6) \u63A5\u4E0B\u6765\u4E09\u6B65\u3002\u628A\u5DF2\u5B9A\u7684\u7ED3\u8BBA\u5E26\u51FA\u5904\u8FFD\u52A0\u8FDB SUMMARY.md\uFF0C\u672A\u5B9A\u7684\u7559\u5728\u5404 progress \u6587\u4EF6\u91CC\u3002",
-      titlePrompt: (title, dir) => "\u6574\u7406\u4EFB\u52A1\u300C" + title + "\u300D\u4E0B\u6240\u6709\u4F1A\u8BDD\u7684\u540D\u5B57\u3002\u5148\u8BFB tasks.json \u548C " + dir + "\u3002\u5BF9\u6BCF\u4E2A\u6210\u5458\uFF0C\u628A alias \u8BBE\u6210\u300C\u9879\u76EE\u7B80\u79F0 - \u73B0\u5728\u5728\u505A\u4EC0\u4E48\u300D\uFF1A\u9879\u76EE\u7B80\u79F0\u53D6\u5B83\u6240\u5728 worktree \u6216\u76EE\u5F55\u540D\uFF08\u4F8B\u5982 \u5FAE\u670D\u52A1\u3001\u6536\u94F6\u540E\u7AEF\u3001goframe\u3001cashier\u3001H5\uFF09\uFF0C\u5177\u4F53\u4EFB\u52A1\u4ECE\u6700\u65B0\u7684 progress \u6587\u4EF6\u91CC\u770B\uFF0C\u4E0D\u8981\u7167\u6284\u6807\u9898\u5F00\u5934\u90A3\u53E5\u95EE\u5019\u3002\u6709\u628A\u63E1\u65F6\u7528 session_rename \u628A\u4F1A\u8BDD\u672C\u4F53\u4E5F\u6539\u6210\u540C\u6837\u7684\u540D\u5B57\uFF1B\u8BC1\u636E\u4E0D\u8DB3\u7684\u8DF3\u8FC7\u5E76\u5728\u56DE\u62A5\u91CC\u5217\u51FA\u6765\u3002\u6539\u5B8C\u5199\u56DE tasks.json\uFF0C\u5E76\u628A\u6BCF\u5904\u6539\u52A8\u4EE5\u300C\u65E7\u540D \u2192 \u65B0\u540D\uFF08\u4F9D\u636E\uFF09\u300D\u5217\u7ED9\u6211\u3002",
-      coord: "\u534F\u8C03",
-      coordGroup: "\u534F\u8C03\u6240\u5728",
-      setCoord: "\u6807\u8BC6\u534F\u8C03\u4F1A\u8BDD",
-      clearCoord: "\u53D6\u6D88\u534F\u8C03",
-      compose: "\u653E\u5165\u804A\u5929\u6846",
-      composed: "\u5DF2\u653E\u5165\u804A\u5929\u6846\uFF0C\u786E\u8BA4\u540E\u81EA\u5DF1\u53D1\u9001",
-      remove: "\u79FB\u9664",
-      open: "\u6253\u5F00\u8FD9\u4E2A\u4F1A\u8BDD",
-      gone: "\u4F1A\u8BDD\u4E0D\u5B58\u5728",
-      save: "\u4FDD\u5B58",
-      cancel: "\u53D6\u6D88",
-      title: "\u4EFB\u52A1\u540D",
-      goal: "\u505A\u4EC0\u4E48",
-      accept: "\u9A8C\u6536\u662F\u4EC0\u4E48",
-      folder: "\u8FDB\u5EA6\u76EE\u5F55",
-      folderHint: "\u5BB6\u76EE\u5F55\uFF08~/\u2026\uFF09\u53EF\u8BFB\uFF1B\u5176\u4ED6\u8DEF\u5F84\u53EA\u8BB0\u5F55\uFF0C\u4E0D\u8BFB\u5185\u5BB9\u3002",
-      must: "\u4EFB\u52A1\u540D\u3001\u505A\u4EC0\u4E48\u3001\u9A8C\u6536\u90FD\u8981\u586B",
-      created: "\u5DF2\u5EFA\u4EFB\u52A1",
-      updated: "\u5DF2\u4FDD\u5B58",
-      added: "\u5DF2\u52A0\u4F1A\u8BDD",
-      already: "\u8FD9\u4E00\u65B9\u5DF2\u7ECF\u5728\u91CC\u9762",
-      addTo: "\u52A0\u8FDB",
-      close: "\u5173\u95ED",
-      searchSessions: "\u641C\u7D22\u4F1A\u8BDD",
-      noSessions: "\u6CA1\u8BFB\u5230\u4F1A\u8BDD",
-      loading: "\u8BFB\u53D6\u4E2D",
-      noPeers: "\u8FD8\u6CA1\u6709\u534F\u4F5C\u65B9",
-      newFolder: "\u76EE\u5F55",
-      thisSession: "\u672C\u4F1A\u8BDD"
+      tasks: "任务",
+      auto: "自动",
+      on: "开",
+      newTask: "新建",
+      refresh: "刷新",
+      search: "搜索任务",
+      sort: "排序",
+      manual: "手动",
+      name: "名称",
+      members: "会话数",
+      none: "还没有任务",
+      noMatch: "没有匹配的任务",
+      pick: "左边选一件任务",
+      you: "你在里面",
+      edit: "编辑",
+      addSession: "加会话",
+      delete: "删除",
+      confirm: "再点删除",
+      progress: "进度目录",
+      copyPath: "复制路径",
+      copyDone: "路径已复制",
+      external: "外部",
+      unreadable: "外部目录：面板只记录和复制路径，不读取里面的文件。",
+      readFail: "读不到目录",
+      running: "运行中",
+      runningChild: "子代理",
+      waiting: "等待",
+      idle: "空闲",
+      failed: "失败",
+      unknown: "—",
+      lastTurn: "上轮",
+      done: "完成",
+      noFolder: "无目录",
+      roleMain: "主线",
+      roleHelper: "辅助",
+      roleNone: "未标",
+      actions: "操作",
+      setMain: "设为主线",
+      setHelper: "设为辅助",
+      fillHelpers: "补充看板会话",
+      overCap: "超过三个",
+      noCoord: "这件任务还没设协调会话",
+      copyId: "复制会话 id",
+      alias: "显示名",
+      setAlias: "改标题",
+      tidyTitles: "让协调整理标题",
+      newSession: "新会话",
+      newSessionTitle: "会话名",
+      newSessionRole: "角色",
+      noDirectory: "这一组拿不到绝对路径，不能建会话",
+      sessionCreated: "已建会话",
+      creating: "创建中",
+      orphan: "会话已建，但没写进名册",
+      fillPrompt: (title, dir, member) => "针对任务「" + title + "」，给「" + member + "」所在的 worktree 补充辅助会话。先读 " + dir + '。每个 worktree 最多三个会话：一个主线推进会话，另有至多两个辅助会话，专门做查代码、核事实、小问询这类小活。如果那个 worktree 还没有辅助会话，用 session.create 在它的同目录建一个：标题写明 worktree 名和用途；首条消息只写四样——任务名、进度目录、它自己的 progress-<id后6位>.md、要它做什么。建完写进 tasks.json 的 members，带 role: "helper"，并在该 worktree 的 .dispatch.json 记一行。已经满三个的，说明哪些该合并或结束，不要再加。你发出的每条消息第一行写明自己的角色（主线或辅助）。',
+      settle: "让协调收拢",
+      settleQueued: "已切到协调会话，收拢指令在它的输入框里",
+      settlePrompt: (title, dir) => "现在对任务「" + title + "」做一次收拢，按 rules/task-collab.md 第八节执行，四步做完再回报。\n\n1. 汇总：读 " + dir + "/HEAD.md、SUMMARY.md、RUNBOOK.md 和最近变化的 progress-*.md，把 HEAD.md 覆盖写成当前状态（≤40 行：状态 / 正在做 / 卡在哪 / 下一步 / 出处），不追加。\n2. 归档：SUMMARY.md 超过 300 行、某份 progress-<id>.md 超过 400 行，就把最早一半移到 " + dir + "/archive/<原文件名>-<YYYY-MM>.md，正文留最近一半并保留顶部指针行；归档前先把里面可复用的操作知识（启动命令、环境地址、配置 id、踩过的坑）提到 RUNBOOK.md。\n3. 整理：把散在任务目录里的成品（提测资料、方案、DMS 工单草稿、配置变更记录、清单、待发回复、沟通文本）移进 " + dir + "/deliverables/；只移动明确是成品的，拿不准的列出来问我，不删任何文件。\n4. 回报：一行说清改了哪些文件、归档了多少行、HEAD 现在的三句话；需要我拍板的单独列。\n\n凭据只写位置不写值；不要动业务代码，不要提交、推送、合并。",
+      patrol: "让协调巡检",
+      patrolPrompt: (title, dir) => "现在按信箱调度跑一轮巡检任务「" + title + "」。先读 C:\\Users\\HUAWEI\\.task-hub\\tasks.json 和 " + dir + "，再读 SUMMARY.md 与本轮有变化的 progress-*.md。对每个成员分在跑 / 可推进 / 等你定 / 已完成；只给可推进的发一条四段式消息（新信息 / 一个可验收动作 / 停止条件 / 写回路径，带【回话】和 returnResult）；有出处的结论写进 SUMMARY.md；命中硬边界（生产改动、删数据、合并 master 或 release、对外发消息）才问我，口径与实现选择按记录自己定并写明依据。成员一律报「名称 + 完整 session id」。",
+      summarize: "让协调总结",
+      jumpCoord: "跳到协调",
+      summaryQueued: "已切到协调会话，提示词在它的输入框里",
+      summaryPrompt: (title, dir) => "现在总结任务「" + title + "」。先读 " + dir + "/SUMMARY.md 和所有 progress-*.md，然后按六段回答：1) 一句话现状 2) 已完成 3) 进行中 4) 卡住的地方与在等谁 5) 已经踩过的坑及各自位置 6) 接下来三步。把已定的结论带出处追加进 SUMMARY.md，未定的留在各 progress 文件里。",
+      titlePrompt: (title, dir) => "整理任务「" + title + "」下所有会话的名字。先读 tasks.json 和 " + dir + "。对每个成员，把 alias 设成「项目简称 - 现在在做什么」：项目简称取它所在 worktree 或目录名（例如 微服务、收银后端、goframe、cashier、H5），具体任务从最新的 progress 文件里看，不要照抄标题开头那句问候。有把握时用 session_rename 把会话本体也改成同样的名字；证据不足的跳过并在回报里列出来。改完写回 tasks.json，并把每处改动以「旧名 → 新名（依据）」列给我。",
+      coord: "协调",
+      coordGroup: "协调所在",
+      setCoord: "标识协调会话",
+      clearCoord: "取消协调",
+      compose: "放入聊天框",
+      composed: "已放入聊天框，确认后自己发送",
+      remove: "移除",
+      open: "打开这个会话",
+      gone: "会话不存在",
+      save: "保存",
+      cancel: "取消",
+      title: "任务名",
+      goal: "做什么",
+      accept: "验收是什么",
+      folder: "进度目录",
+      folderHint: "家目录（~/…）可读；其他路径只记录，不读内容。",
+      must: "任务名、做什么、验收都要填",
+      created: "已建任务",
+      updated: "已保存",
+      added: "已加会话",
+      already: "这一方已经在里面",
+      addTo: "加进",
+      close: "关闭",
+      searchSessions: "搜索会话",
+      noSessions: "没读到会话",
+      loading: "读取中",
+      noPeers: "还没有协作方",
+      newFolder: "目录",
+      thisSession: "本会话"
     }
   };
   var S = {
@@ -2087,7 +2093,7 @@ ${GUEST_UI_LOOK_CSS}`;
     }
     const summary = dir + "/SUMMARY.md";
     if (!await statPath(summary)) {
-      await host.writeFile(summary, "# " + (task.title || task.id) + " \xB7 summary\n\nSettled conclusions only.\n").catch(() => {
+      await host.writeFile(summary, "# " + (task.title || task.id) + " · summary\n\nSettled conclusions only.\n").catch(() => {
       });
     }
   }
@@ -2184,7 +2190,7 @@ ${GUEST_UI_LOOK_CSS}`;
     if (svc && svc.lastMs) return svc.lastMs;
     return 0;
   }
-  var STATE_ICON = { done: "\u2713", failed: "\u2715", waiting: "\u25D4", idle: "\xB7", unknown: "\u2014" };
+  var STATE_ICON = { done: "✓", failed: "✕", waiting: "◔", idle: "·", unknown: "—" };
   function renderState(el3, member) {
     const state = stateOf(member);
     const elapsed = elapsedOf(member, state);
@@ -2387,7 +2393,7 @@ ${GUEST_UI_LOOK_CSS}`;
     row.className = "row";
     const handle = document.createElement("span");
     handle.className = "handle";
-    handle.textContent = "\u22EE\u22EE";
+    handle.textContent = "⋮⋮";
     handle.draggable = true;
     handle.addEventListener("dragstart", (event) => {
       S.dragId = member.sessionId;
@@ -2469,7 +2475,7 @@ ${GUEST_UI_LOOK_CSS}`;
     const dir = live && live.directory ? live.directory.split(/[\\/]/).filter(Boolean).pop() : member.directory;
     if (dir) parts.push(dir);
     parts.push(member.sessionId.slice(-6));
-    sub.textContent = parts.join(" \xB7 ");
+    sub.textContent = parts.join(" · ");
     info.append(title, sub);
     const state = document.createElement("span");
     state.className = "state";
@@ -2479,7 +2485,7 @@ ${GUEST_UI_LOOK_CSS}`;
     actions.className = "row-actions";
     const isCoord = task.coordinator === member.sessionId;
     const roleNow = member.role === "helper" ? "helper" : "main";
-    const marker = button2("\u22EF", isCoord ? "primary" : "", () => {
+    const marker = button2("⋯", isCoord ? "primary" : "", () => {
       S.openMenu = S.openMenu === member.sessionId ? null : member.sessionId;
       void renderDetail();
     });
@@ -2602,7 +2608,7 @@ ${GUEST_UI_LOOK_CSS}`;
     if (S.newCreated) {
       const note = document.createElement("div");
       note.className = "orphan";
-      note.textContent = t("orphan") + " \xB7 " + S.newCreated;
+      note.textContent = t("orphan") + " · " + S.newCreated;
       const copy = button2(t("copyId"), "accent", async () => {
         try {
           await host.writeClipboard(S.newCreated);
@@ -2680,7 +2686,7 @@ ${GUEST_UI_LOOK_CSS}`;
     } catch (error) {
       target.members = target.members.filter((m) => m.sessionId !== res.id);
       S.newCreated = res.id;
-      toast(t("orphan") + " \xB7 " + String(error && error.code || "ERR"), "error");
+      toast(t("orphan") + " · " + String(error && error.code || "ERR"), "error");
       void renderDetail();
       return;
     }
@@ -2700,7 +2706,7 @@ ${GUEST_UI_LOOK_CSS}`;
     const open = S.expanded.has(key);
     const caret = document.createElement("span");
     caret.className = "caret";
-    caret.textContent = open ? "\u25BE" : "\u25B8";
+    caret.textContent = open ? "▾" : "▸";
     const name = document.createElement("span");
     name.className = "group-name";
     name.textContent = key;
@@ -2714,7 +2720,7 @@ ${GUEST_UI_LOOK_CSS}`;
     count.className = "group-count";
     const mainCount = list.filter((m) => m.role !== "helper").length;
     const helperCount = list.filter((m) => m.role === "helper").length;
-    count.textContent = `${mainCount} ${t("roleMain")} \xB7 ${helperCount} ${t("roleHelper")}` + (list.length > 3 ? " \xB7 " + t("overCap") : "");
+    count.textContent = `${mainCount} ${t("roleMain")} · ${helperCount} ${t("roleHelper")}` + (list.length > 3 ? " · " + t("overCap") : "");
     count.classList.toggle("bad", list.length > 3 || mainCount > 1);
     const state = document.createElement("span");
     state.className = "state";
@@ -2800,7 +2806,7 @@ ${GUEST_UI_LOOK_CSS}`;
       S.deleting = null;
       void removeTask(task.id).then(render);
     });
-    const moreBtn = button2("\u22EF", "", () => {
+    const moreBtn = button2("⋯", "", () => {
       S.headMenu = !S.headMenu;
       void renderDetail();
     });
@@ -2826,6 +2832,19 @@ ${GUEST_UI_LOOK_CSS}`;
       const menu = document.createElement("div");
       menu.className = "headmenu";
       menu.append(
+        button2(t("settle"), "accent", async () => {
+          if (!task.coordinator) {
+            toast(t("noCoord"), "error");
+            return;
+          }
+          try {
+            await gotoSession(task.coordinator);
+            await host.compose({ text: t("settlePrompt")(task.title || task.id, task.progressDir || ""), mode: "replace" });
+            toast(t("settleQueued"), "success");
+          } catch (error) {
+            toast(String(error && error.code || "ERR"), "error");
+          }
+        }),
         button2(t("patrol"), "accent", async () => {
           if (!task.coordinator) {
             toast(t("noCoord"), "error");
@@ -2944,7 +2963,7 @@ ${GUEST_UI_LOOK_CSS}`;
     for (const row of rows) {
       const chip = document.createElement("span");
       chip.className = "file" + (row.info ? "" : " missing");
-      chip.textContent = row.name + (row.info ? " \xB7 " + humanSize(row.info.size) : " \xB7 \u2014");
+      chip.textContent = row.name + (row.info ? " · " + humanSize(row.info.size) : " · —");
       chip.title = row.path;
       box.appendChild(chip);
     }
@@ -3104,7 +3123,7 @@ ${GUEST_UI_LOOK_CSS}`;
       name.textContent = row.title;
       const sub = document.createElement("span");
       sub.className = "pick-sub";
-      sub.textContent = row.project + " \xB7 " + row.id.slice(-6);
+      sub.textContent = row.project + " · " + row.id.slice(-6);
       item.append(name, sub);
       item.onclick = () => {
         const task = currentTask();
@@ -3117,7 +3136,7 @@ ${GUEST_UI_LOOK_CSS}`;
     S.pickQ = "";
     S.pickRows = [];
     el2("p-search").value = "";
-    el2("p-hint").textContent = t("addTo") + " \u300C" + (task.title || task.id) + "\u300D";
+    el2("p-hint").textContent = t("addTo") + " 「" + (task.title || task.id) + "」";
     el2("p-list").textContent = t("loading");
     el2("picker").classList.add("show");
     const rows = [];

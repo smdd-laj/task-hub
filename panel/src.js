@@ -32,6 +32,15 @@ const DICT = {
       "Keep each worktree to at most three sessions: one main line plus up to two helpers for small jobs such as reading code, checking a fact, or a quick question. " +
       "If that worktree has no helper yet, create one with session.create in the same directory, give it a title naming the worktree and the purpose, and send one short first message: task name, progress folder, its own progress-<last 6 of its id>.md, and what to do. " +
       "Register it in tasks.json members with role: \"helper\" and log it in that worktree's .dispatch.json. If it already has three, say which ones to merge or close instead. Start every message with your own role (main or helper).",
+    settle: "Collect and tidy",
+    settleQueued: "Switched to the coordinator, the tidy-up brief is in its chat box",
+    settlePrompt: (title, dir) =>
+      "Tidy task \"" + title + "\" now, following rules/task-collab.md section 8, and report only after all four steps.\n\n" +
+      "1. Summarize: read " + dir + "/HEAD.md, SUMMARY.md, RUNBOOK.md and the recently changed progress-*.md; overwrite HEAD.md with the current state (<=40 lines: state / doing / blocked / next / sources). Do not append.\n" +
+      "2. Archive: when SUMMARY.md exceeds 300 lines or a progress-<id>.md exceeds 400 lines, move the earliest half to " + dir + "/archive/<name>-<YYYY-MM>.md, keep the latest half plus the pointer line at the top. Before archiving, lift any reusable operating knowledge (start commands, environment addresses, config ids, pitfalls) into RUNBOOK.md.\n" +
+      "3. Tidy: move finished deliverables scattered in the task folder (test package, design, DMS draft, config change log, checklists, pending replies, message drafts) into " + dir + "/deliverables/. Move only what is clearly a deliverable; list the uncertain ones for me. Delete nothing.\n" +
+      "4. Report: one line on which files changed, how many lines were archived, and HEAD in three sentences; list anything that needs my decision separately.\n\n" +
+      "Credentials: write where they live, never their value. Do not touch business code, do not commit, push or merge.",
     patrol: "Run a patrol",
     patrolPrompt: (title, dir) =>
       "Run one patrol round for task \"" + title + "\" as the coordinator. Read C:\\Users\\HUAWEI\\.task-hub\\tasks.json and " + dir + ", then SUMMARY.md and the progress-*.md that changed this round. Sort every member into running / can-advance / needs-user / done. Send only the can-advance ones a four-part message (new info / one checkable action / stop condition / which file to write, with 【回话】 and returnResult). Append sourced conclusions to SUMMARY.md. Ask me only on hard boundaries (production change, deleting data, merging master or release, messaging outside systems); settle wording and implementation choices from the records yourself and say what you decided. Report every member as \"name + full session id\".",
@@ -71,6 +80,15 @@ const DICT = {
       "如果那个 worktree 还没有辅助会话，用 session.create 在它的同目录建一个：标题写明 worktree 名和用途；首条消息只写四样——任务名、进度目录、它自己的 progress-<id后6位>.md、要它做什么。" +
       "建完写进 tasks.json 的 members，带 role: \"helper\"，并在该 worktree 的 .dispatch.json 记一行。已经满三个的，说明哪些该合并或结束，不要再加。" +
       "你发出的每条消息第一行写明自己的角色（主线或辅助）。",
+    settle: "让协调收拢",
+    settleQueued: "已切到协调会话，收拢指令在它的输入框里",
+    settlePrompt: (title, dir) =>
+      "现在对任务「" + title + "」做一次收拢，按 rules/task-collab.md 第八节执行，四步做完再回报。\n\n" +
+      "1. 汇总：读 " + dir + "/HEAD.md、SUMMARY.md、RUNBOOK.md 和最近变化的 progress-*.md，把 HEAD.md 覆盖写成当前状态（≤40 行：状态 / 正在做 / 卡在哪 / 下一步 / 出处），不追加。\n" +
+      "2. 归档：SUMMARY.md 超过 300 行、某份 progress-<id>.md 超过 400 行，就把最早一半移到 " + dir + "/archive/<原文件名>-<YYYY-MM>.md，正文留最近一半并保留顶部指针行；归档前先把里面可复用的操作知识（启动命令、环境地址、配置 id、踩过的坑）提到 RUNBOOK.md。\n" +
+      "3. 整理：把散在任务目录里的成品（提测资料、方案、DMS 工单草稿、配置变更记录、清单、待发回复、沟通文本）移进 " + dir + "/deliverables/；只移动明确是成品的，拿不准的列出来问我，不删任何文件。\n" +
+      "4. 回报：一行说清改了哪些文件、归档了多少行、HEAD 现在的三句话；需要我拍板的单独列。\n\n" +
+      "凭据只写位置不写值；不要动业务代码，不要提交、推送、合并。",
     patrol: "让协调巡检",
     patrolPrompt: (title, dir) =>
       "现在按信箱调度跑一轮巡检任务「" + title + "」。先读 C:\\Users\\HUAWEI\\.task-hub\\tasks.json 和 " + dir + "，再读 SUMMARY.md 与本轮有变化的 progress-*.md。对每个成员分在跑 / 可推进 / 等你定 / 已完成；只给可推进的发一条四段式消息（新信息 / 一个可验收动作 / 停止条件 / 写回路径，带【回话】和 returnResult）；有出处的结论写进 SUMMARY.md；命中硬边界（生产改动、删数据、合并 master 或 release、对外发消息）才问我，口径与实现选择按记录自己定并写明依据。成员一律报「名称 + 完整 session id」。",
@@ -1026,6 +1044,19 @@ async function renderDetail() {
     const menu = document.createElement("div")
     menu.className = "headmenu"
     menu.append(
+      button(t("settle"), "accent", async () => {
+        if (!task.coordinator) {
+          toast(t("noCoord"), "error")
+          return
+        }
+        try {
+          await gotoSession(task.coordinator)
+          await host.compose({ text: t("settlePrompt")(task.title || task.id, task.progressDir || ""), mode: "replace" })
+          toast(t("settleQueued"), "success")
+        } catch (error) {
+          toast(String((error && error.code) || "ERR"), "error")
+        }
+      }),
       button(t("patrol"), "accent", async () => {
         if (!task.coordinator) {
           toast(t("noCoord"), "error")
