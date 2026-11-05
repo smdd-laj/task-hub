@@ -98,14 +98,13 @@ const DICT = {
     patrol: "Run a patrol",
     patrolPrompt: (title, dir) =>
       "Run one patrol round for task \"" + title + "\" as the coordinator. Read C:\\Users\\HUAWEI\\.task-hub\\tasks.json and " + dir + ", then HEAD.md, SUMMARY.md, RUNBOOK.md and DECISIONS.md, plus only the last three sections of the progress files that changed this round. Sort every member into running / can-advance / needs-user / done. Send only the can-advance ones a four-part message (new info / one checkable action / stop condition / which file to write, with 【回话】 and returnResult). Append sourced conclusions to SUMMARY.md. Ask me only on hard boundaries (production change, deleting data, merging master or release, messaging outside systems); settle wording and implementation choices from the records yourself and say what you decided. Move loose deliverables into deliverables/ before you report. Report every member as \"name + full session id\".",
-    summarize: "Ask coordinator", jumpCoord: "Open coordinator", summaryQueued: "Switched to the coordinator, prompt is in its chat box",
+    summarize: "Ask coordinator", summaryQueued: "Switched to the coordinator, prompt is in its chat box",
     summaryPrompt: (title, dir) =>
       "Summarize task \"" + title + "\" now. Read " + dir + "/SUMMARY.md and every progress-*.md, then answer in six parts: 1) one-line status, 2) done, 3) in progress, 4) blocked / waiting on whom, 5) pitfalls hit so far with where they live, 6) next three actions. Append settled conclusions to SUMMARY.md with their source; leave open items in the progress files.",
     titlePrompt: (title, dir) =>
       "Tidy the session names for task \"" + title + "\". Read tasks.json and " + dir + ", then for every member set alias to \"<short project> - <what it is doing now>\": take the short project name from its worktree or directory (for example 微服务, 收银后端, goframe, cashier, H5), and describe the current concrete job from the newest progress file rather than the opening greeting. Rename the session itself with session_rename when you are sure; skip when the evidence is thin and list those instead. Write the result back to tasks.json and report each change as old -> new with the reason.",
-    coord: "coordinator", coordGroup: "coordinator here",
-    coordProgress: "Coordinator progress",
-    noProgress: "no progress file yet", setCoord: "Make coordinator", clearCoord: "Unset coordinator",
+    coord: "coordinator", coordGroup: "coordinator here", coordShort: "C",
+    setCoord: "Make coordinator", clearCoord: "Unset coordinator",
     compose: "To chat box", composed: "Added to the chat box, send it yourself",
     remove: "Remove", open: "Open this session", gone: "Session not found",
     save: "Save", cancel: "Cancel", title: "Task name", goal: "What it is", accept: "Done when",
@@ -195,14 +194,13 @@ const DICT = {
     patrol: "让协调巡检",
     patrolPrompt: (title, dir) =>
       "现在按信箱调度跑一轮巡检任务「" + title + "」。先读 C:\\Users\\HUAWEI\\.task-hub\\tasks.json 和 " + dir + "，再读 HEAD.md / SUMMARY.md / RUNBOOK.md / DECISIONS.md，以及本轮有变化的 progress 的最后三段。对每个成员分在跑 / 可推进 / 等你定 / 已完成；只给可推进的发一条四段式消息（新信息 / 一个可验收动作 / 停止条件 / 写回路径，带【回话】和 returnResult）；有出处的结论写进 SUMMARY.md；命中硬边界（生产改动、删数据、合并 master 或 release、对外发消息）才问我，口径与实现选择按记录自己定并写明依据。顺手把散落在目录里的成品移进 deliverables/。成员一律报「名称 + 完整 session id」。",
-    summarize: "让协调总结", jumpCoord: "跳到协调", summaryQueued: "已切到协调会话，提示词在它的输入框里",
+    summarize: "让协调总结", summaryQueued: "已切到协调会话，提示词在它的输入框里",
     summaryPrompt: (title, dir) =>
       "现在总结任务「" + title + "」。先读 " + dir + "/SUMMARY.md 和所有 progress-*.md，然后按六段回答：1) 一句话现状 2) 已完成 3) 进行中 4) 卡住的地方与在等谁 5) 已经踩过的坑及各自位置 6) 接下来三步。把已定的结论带出处追加进 SUMMARY.md，未定的留在各 progress 文件里。",
     titlePrompt: (title, dir) =>
       "整理任务「" + title + "」下所有会话的名字。先读 tasks.json 和 " + dir + "。对每个成员，把 alias 设成「项目简称 - 现在在做什么」：项目简称取它所在 worktree 或目录名（例如 微服务、收银后端、goframe、cashier、H5），具体任务从最新的 progress 文件里看，不要照抄标题开头那句问候。有把握时用 session_rename 把会话本体也改成同样的名字；证据不足的跳过并在回报里列出来。改完写回 tasks.json，并把每处改动以「旧名 → 新名（依据）」列给我。",
-    coord: "协调", coordGroup: "协调所在",
-    coordProgress: "协调会话进度",
-    noProgress: "还没有 progress 文件", setCoord: "标识协调会话", clearCoord: "取消协调",
+    coord: "协调", coordGroup: "协调所在", coordShort: "协",
+    setCoord: "标识协调会话", clearCoord: "取消协调",
     compose: "放入聊天框", composed: "已放入聊天框，确认后自己发送",
     remove: "移除", open: "打开这个会话", gone: "会话不存在",
     save: "保存", cancel: "取消", title: "任务名", goal: "做什么", accept: "验收是什么",
@@ -222,7 +220,7 @@ const S = {
   formMode: "create", formId: null, pickQ: "", pickRows: [], pickProjects: 0,
   newFor: null, newTitle: "", newRole: "helper", newBusy: false, newCreated: "", filesOpen: false,
   schedules: new Map(), scheduleFor: null, scheduleForm: null,
-  deleting: null, deleteTimer: 0, dragId: null
+  deleting: null, deleteTimer: 0, dragId: null, dragTaskId: null
 }
 
 const t = (key) => (DICT[S.loc] && DICT[S.loc][key]) || DICT.en[key] || key
@@ -733,21 +731,49 @@ function renderList() {
     return
   }
   for (const task of list) {
-    const item = document.createElement("button")
-    item.type = "button"
+    const item = document.createElement("div")
     item.className = "item" + (task === currentTask() ? " on" : "")
+    item.setAttribute("role", "button")
+    item.tabIndex = 0
+    item.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault()
+        item.click()
+      }
+    })
     if (isMine(task)) {
       const dot = document.createElement("span")
       dot.className = "dot"
       item.appendChild(dot)
     }
+    // 任务 id 固定显示在名称下方：一件任务在多个仓库、多个会话里出现时，靠它对齐。
+    const col = document.createElement("span")
+    col.className = "item-col"
     const name = document.createElement("span")
     name.className = "item-name"
     name.textContent = task.title || task.id
+    const idTag = document.createElement("span")
+    idTag.className = "item-id"
+    idTag.textContent = task.id
+    col.append(name, idTag)
     const meta = document.createElement("span")
     meta.className = "item-meta"
     meta.textContent = String((task.members || []).length)
-    item.append(name, meta)
+    item.appendChild(col)
+    // 列表项上直接给「跳到协调」，不用先选中任务。
+    if (task.coordinator) {
+      const jump = document.createElement("button")
+      jump.type = "button"
+      jump.className = "btn tiny accent"
+      jump.textContent = t("coordShort")
+      jump.title = t("hintJump")
+      jump.onclick = (event) => {
+        event.stopPropagation()
+        void gotoSession(task.coordinator).catch((error) => toast(String((error && error.code) || "ERR"), "error"))
+      }
+      item.appendChild(jump)
+    }
+    item.appendChild(meta)
     item.onclick = () => {
       S.selected = task.id
       S.deleting = null
@@ -755,6 +781,30 @@ function renderList() {
       S.newFor = null
       render()
     }
+    // 拖动排序：拖动时自动切回手动排序，否则按名称/成员数排序会把顺序盖掉。
+    item.draggable = true
+    item.addEventListener("dragstart", (event) => {
+      S.dragTaskId = task.id
+      S.sort = "manual"
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = "move"
+    })
+    item.addEventListener("dragend", () => {
+      S.dragTaskId = null
+      for (const node of box.querySelectorAll(".drop-target")) node.classList.remove("drop-target")
+    })
+    item.addEventListener("dragover", (event) => {
+      if (!S.dragTaskId || S.dragTaskId === task.id) return
+      event.preventDefault()
+      item.classList.add("drop-target")
+    })
+    item.addEventListener("dragleave", () => item.classList.remove("drop-target"))
+    item.addEventListener("drop", (event) => {
+      event.preventDefault()
+      item.classList.remove("drop-target")
+      const from = S.dragTaskId
+      S.dragTaskId = null
+      if (from && from !== task.id) void reorderTasks(from, task.id)
+    })
     box.appendChild(item)
   }
   box.scrollTop = scroll
@@ -1190,6 +1240,11 @@ async function renderDetail() {
   name.className = "head-name"
   name.textContent = task.title || task.id
   head.appendChild(name)
+  const idBadge = document.createElement("span")
+  idBadge.className = "tag id"
+  idBadge.textContent = task.id
+  idBadge.title = "任务 id（目录名 task-<id>）"
+  head.appendChild(idBadge)
   if (isMine(task)) {
     const tag = document.createElement("span")
     tag.className = "tag"
@@ -1219,17 +1274,6 @@ async function renderDetail() {
   })
   moreBtn.title = t("actions")
 
-  if (task.coordinator) {
-    headActions.appendChild(
-      button(t("jumpCoord"), "primary", async () => {
-        try {
-          await gotoSession(task.coordinator)
-        } catch (error) {
-          toast(String((error && error.code) || "ERR"), "error")
-        }
-      }, t("hintJump"))
-    )
-  }
   headActions.append(
     button(t("addSession"), "accent", () => void openPicker(task), t("hintAdd")),
     moreBtn
@@ -1541,53 +1585,21 @@ async function renderFiles(task, box) {
   }
 
   const progressRows = rows.filter((r) => r.group === "progress")
-  // 协调会话自己的那份单独拎出来：它既是成员，也承担收拢职责，混在成员里看不出来。
-  const coordSuffix = task.coordinator ? String(task.coordinator).slice(-6) : ""
-  const coordRow = coordSuffix ? progressRows.find((r) => r.name === "progress-" + coordSuffix + ".md") : null
-  const memberRows = coordRow ? progressRows.filter((r) => r !== coordRow) : progressRows
-
-  if (coordRow) {
-    const el = makeChip(coordRow, coordRow.info ? humanSize(coordRow.size) : "\u2014")
-    el.classList.add("coord")
-    if (coordRow.info) {
-      el.classList.add("click")
-      el.onclick = () => void openReader(coordRow.name, coordRow.path)
-    }
-    const tag = document.createElement("span")
-    tag.className = "tag coord"
-    tag.textContent = t("coord")
-    el.appendChild(tag)
-    if (coordRow.budget && coordRow.size > 0) el.appendChild(budgetBar(coordRow.size, coordRow.budget))
-    if (coordRow.size >= coordRow.budget) el.classList.add("bad")
-    box.appendChild(el)
-  } else if (task.coordinator) {
-    // 协调会话还没写过 progress 也要露一行，否则看不出谁是协调、有没有进度。
-    const el = document.createElement("span")
-    el.className = "file coord missing"
-    el.textContent = t("coordProgress") + " \u00b7 " + t("noProgress")
-    el.title = task.coordinator
-    const tag = document.createElement("span")
-    tag.className = "tag coord"
-    tag.textContent = t("coord")
-    el.appendChild(tag)
-    box.appendChild(el)
-  }
-
-  if (memberRows.length) {
-    const total = memberRows.reduce((a, r) => a + r.size, 0)
-    const max = memberRows.reduce((a, r) => Math.max(a, r.size), 0)
+  if (progressRows.length) {
+    const total = progressRows.reduce((a, r) => a + r.size, 0)
+    const max = progressRows.reduce((a, r) => Math.max(a, r.size), 0)
     const head = document.createElement("span")
     head.className = "file click dir"
     head.textContent =
-      "progress/ \u00b7 " + memberRows.length + " \u00b7 " + humanSize(total) + " \u00b7 max " + humanSize(max)
-    head.title = S.filesOpen ? t("foldFiles") : t("unfoldFiles")(memberRows.length)
+      "progress/ \u00b7 " + progressRows.length + " \u00b7 " + humanSize(total) + " \u00b7 max " + humanSize(max)
+    head.title = S.filesOpen ? t("foldFiles") : t("unfoldFiles")(progressRows.length)
     head.onclick = () => {
       S.filesOpen = !S.filesOpen
       void renderDetail()
     }
     box.appendChild(head)
     if (S.filesOpen) {
-      for (const row of memberRows) {
+      for (const row of progressRows) {
         const el = makeChip(row, row.info ? humanSize(row.size) : "\u2014")
         if (row.info) {
           el.classList.add("click")
@@ -1597,7 +1609,7 @@ async function renderFiles(task, box) {
         if (row.size >= row.budget) el.classList.add("bad")
         box.appendChild(el)
       }
-    } else if (memberRows.some((r) => r.size >= r.budget)) {
+    } else if (progressRows.some((r) => r.size >= r.budget)) {
       head.classList.add("bad")
     }
   }
@@ -1735,6 +1747,17 @@ function toast(message, kind) {
 
 /* ---------------- mutations ---------------- */
 
+// 任务列表拖动：只改名册顺序，不动任务内容。
+async function reorderTasks(fromId, toId) {
+  const from = S.ids.indexOf(fromId)
+  const to = S.ids.indexOf(toId)
+  if (from < 0 || to < 0 || from === to) return
+  S.ids.splice(from, 1)
+  S.ids.splice(to, 0, fromId)
+  await writeTasks(S.ids.map((id) => S.tasks.get(id)).filter(Boolean))
+  render()
+}
+
 async function reorder(task, fromId, toId) {
   if (!fromId || !toId || fromId === toId) return
   const members = task.members || []
@@ -1817,6 +1840,23 @@ function closeForm() {
   el("form").classList.remove("show")
 }
 
+// 新建任务后把它注册成 OpenChamber 项目：不注册，会话移过去就会从侧栏消失。
+async function registerProject(task) {
+  if (typeof host.serviceRequest !== "function") return
+  const dir = String(task.progressDir || "")
+    .replace(/^~/, "C:\\Users\\HUAWEI")
+    .replace(/\//g, "\\")
+  if (!dir) return
+  try {
+    await host.serviceRequest({
+      method: "POST",
+      path: "/registerProject",
+      // 侧栏项目名与任务 id 对得上：标题 · task-<id>。
+      body: { dir, label: (task.title || task.id) + " \u00b7 " + task.id }
+    })
+  } catch {}
+}
+
 async function submitForm() {
   const title = el("f-title").value.trim()
   const goal = el("f-goal").value.trim()
@@ -1842,7 +1882,8 @@ async function submitForm() {
     return
   }
 
-  const id = "t_" + Date.now().toString(36).slice(-6)
+  // 2026-11-05：id 统一 task- 前缀，目录名与看板标识同一套。
+  const id = "task-" + Date.now().toString(36).slice(-6)
   const task = {
     id,
     title,
@@ -1855,6 +1896,7 @@ async function submitForm() {
   }
   await persist(task)
   await ensureFolder(task, true)
+  await registerProject(task)
   S.selected = task.id
   closeForm()
   render()

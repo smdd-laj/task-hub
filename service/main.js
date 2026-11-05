@@ -25,6 +25,8 @@ const CLI_POLL_MS = 4000
 const LOG_DIR = join(homedir(), ".task-hub")
 const LOG_FILE = join(LOG_DIR, "service.log")
 const SCHEDULES_FILE = join(LOG_DIR, "schedules.json")
+const OPENCHAMBER_SETTINGS = join(homedir(), ".config", "openchamber", "settings.json")
+const TASKS_ROOT = join(homedir(), ".task-hub", "tasks")
 
 function log(line) {
   try {
@@ -214,6 +216,41 @@ function readBody(req, limit = 256 * 1024) {
     req.on("close", () => done(null))
     req.on("error", () => done(null))
   })
+}
+
+function projectIdFor(dir) {
+  const norm = dir.replace(/\\/g, "/")
+  return "path_" + Buffer.from(norm, "utf8").toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "")
+}
+
+// 新建任务时把它注册成 OpenChamber 项目，否则会话移过去后侧栏看不到。
+function registerProject(dir, label) {
+  try {
+    const settings = JSON.parse(readFileSync(OPENCHAMBER_SETTINGS, "utf8"))
+    const id = projectIdFor(dir)
+    const projects = Array.isArray(settings.projects) ? settings.projects : []
+    if (projects.some((p) => p.id === id || p.path === dir)) return { id, added: false }
+    const now = Date.now()
+    projects.push({
+      id,
+      path: dir,
+      label: label || dir.split(/[\\/]/).filter(Boolean).pop(),
+      icon: "folder",
+      color: "type",
+      defaultAgent: "流式开发主代理",
+      addedAt: now,
+      lastOpenedAt: now,
+      iconBackground: null,
+      sidebarCollapsed: false
+    })
+    settings.projects = projects
+    writeFileSync(OPENCHAMBER_SETTINGS, JSON.stringify(settings, null, 2) + "\n", "utf8")
+    log(`registerProject ${dir} id=${id}`)
+    return { id, added: true }
+  } catch (error) {
+    log(`registerProject failed ${String(error && error.message).slice(0, 160)}`)
+    return { id: "", added: false, error: "write-failed" }
+  }
 }
 
 /* ---------------- scheduled patrol ---------------- */
@@ -456,6 +493,27 @@ const server = http.createServer(async (req, res) => {
     log(`createSession ok dir=${directory} id=${sessionId}`)
     res.writeHead(200, { "content-type": "application/json" })
     res.end(JSON.stringify({ sessionId }))
+    return
+  }
+
+  if (url.pathname === "/registerProject" && req.method === "POST") {
+    const raw = await readBody(req)
+    let body = null
+    try {
+      body = raw ? JSON.parse(raw) : null
+    } catch {
+      body = null
+    }
+    const dir = String((body && body.dir) || "").trim()
+    const label = String((body && body.label) || "").trim()
+    if (!dir.startsWith(TASKS_ROOT) || dir.split(/[\\/]/).includes("..")) {
+      res.writeHead(400, { "content-type": "application/json" })
+      res.end('{"error":"bad-dir"}')
+      return
+    }
+    const result = registerProject(dir, label)
+    res.writeHead(result.error ? 500 : 200, { "content-type": "application/json" })
+    res.end(JSON.stringify(result))
     return
   }
 
