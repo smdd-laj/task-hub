@@ -1939,18 +1939,24 @@ async function registerProject(task) {
 async function startCoordinatorSession(task) {
   if (typeof host.startSession !== "function") return { error: "no-start-session" }
   const dir = absoluteDir(task.progressDir)
-  const projects = await host.listProjects().catch(() => null)
-  const list = projects && Array.isArray(projects.projects) ? projects.projects : []
   const want = dir.replace(/\\/g, "/").toLowerCase()
-  const target = list.find((project) => String(project.directory || "").replace(/\\/g, "/").toLowerCase() === want)
+  // 新建任务的 settings 刚写盘，宿主的项目列表可能还没刷新：短轮询等它认到再建会话。
+  let target = null
+  for (let attempt = 0; attempt < 10 && !target; attempt++) {
+    const projects = await host.listProjects().catch(() => null)
+    const list = projects && Array.isArray(projects.projects) ? projects.projects : []
+    target = list.find((project) => String(project.directory || "").replace(/\\/g, "/").toLowerCase() === want) || null
+    if (!target) await new Promise((resolve) => setTimeout(resolve, 350))
+  }
   if (!target) return { error: "no-project" }
   const brief = [
-    "你是这件任务的协调会话（信箱调度）。",
+    "你是这件任务的协调会话。",
     "任务 id：" + task.id,
     "任务目录：" + dir,
     "标题：" + (task.title || ""),
     "做什么：" + (task.goal || ""),
     "验收：" + (task.acceptance || ""),
+    "不改业务代码；要取证或动手就派给成员。",
     "",
     "先读 " + dir + "\\HEAD.md 与 SUMMARY.md，再按 rules/task-collab.md 工作。"
   ].join("\n")
