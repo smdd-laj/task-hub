@@ -31,7 +31,7 @@ const DICT = {
     lastTurn: "last", done: "done", noFolder: "no folder",
     roleMain: "main", roleHelper: "helper", roleNone: "unset", actions: "Actions",
     setMain: "Make main", setHelper: "Make helper",
-    fillHelpers: "Fill helpers", overCap: "over 3", noCoord: "No coordinator set", copyId: "Copy id", alias: "Display name", setAlias: "Rename", tidyTitles: "Tidy titles",
+    fillHelpers: "Fill helpers", overCap: "over 3", noCoord: "No coordinator set", copyId: "Copy id", alias: "Display name", setAlias: "Rename", tidyTitles: "Tidy titles", saving: "Saving...", makeCoord: "Create coordinator", hintMakeCoord: "Register this folder as a project and create a coordinator session", coordRetry: "Open the task and click Create coordinator to retry",
     hintJump: "Open the coordinator session this task points to",
     hintAdd: "Create a session in this group's worktree and add it to the roster",
     hintSettle: "Overwrite HEAD, archive over-budget files, lift knowledge into RUNBOOK, sort deliverables",
@@ -111,6 +111,7 @@ const DICT = {
     folder: "Progress folder", folderHint: "Home paths (~/...) are readable. Other paths are recorded only.",
     must: "Name, what it is and done-when are required",
     created: "Task created", updated: "Saved", added: "Session added", already: "Already in this task",
+    coordPrefix: "Coordinator \u00b7 ", coordCreated: "coordinator session created", coordFailed: "coordinator session failed:",
     addTo: "Add to", close: "Close", searchSessions: "Search sessions",
     noSessions: "No sessions found", loading: "Loading", noPeers: "No session yet",
     newFolder: "Folder", thisSession: "this session"
@@ -126,7 +127,7 @@ const DICT = {
     lastTurn: "上轮", done: "完成", noFolder: "无目录",
     roleMain: "主线", roleHelper: "辅助", roleNone: "未标", actions: "操作",
     setMain: "设为主线", setHelper: "设为辅助",
-    fillHelpers: "补充看板会话", overCap: "超过三个", noCoord: "这件任务还没设协调会话", copyId: "复制会话 id", alias: "显示名", setAlias: "改标题", tidyTitles: "让协调整理标题",
+    fillHelpers: "补充看板会话", overCap: "超过三个", noCoord: "这件任务还没设协调会话", copyId: "复制会话 id", alias: "显示名", setAlias: "改标题", tidyTitles: "让协调整理标题", saving: "保存中…", makeCoord: "建协调会话", hintMakeCoord: "把目录注册成项目并建一个协调会话", coordRetry: "打开任务点「建协调会话」可重试",
     hintJump: "切到这件任务设定的协调会话，不带提示词",
     hintAdd: "在这个项目组的 worktree 里新建会话，并写入名册",
     hintSettle: "让协调覆盖 HEAD、归档超限文件、把操作知识提到 RUNBOOK、整理成品",
@@ -207,6 +208,7 @@ const DICT = {
     folder: "进度目录", folderHint: "家目录（~/…）可读；其他路径只记录，不读内容。",
     must: "任务名、做什么、验收都要填",
     created: "已建任务", updated: "已保存", added: "已加会话", already: "这一方已经在里面",
+    coordPrefix: "协调 \u00b7 ", coordCreated: "协调会话已建", coordFailed: "协调会话没建成：",
     addTo: "加进", close: "关闭", searchSessions: "搜索会话",
     noSessions: "没读到会话", loading: "读取中", noPeers: "还没有协作方",
     newFolder: "目录", thisSession: "本会话"
@@ -218,7 +220,7 @@ const S = {
   selected: null, query: "", sort: "manual", me: null, meTitle: "",
   live: new Map(), busy: new Set(), service: new Map(), subscribed: new Set(), since: new Map(), stateNodes: [], groupNodes: [], expanded: new Set(), openMenu: null, headMenu: false, renaming: null, lastKey: "", ticker: 0, loc: "en", auto: 0, mounted: false,
   formMode: "create", formId: null, pickQ: "", pickRows: [], pickProjects: 0,
-  newFor: null, newTitle: "", newRole: "helper", newBusy: false, newCreated: "", filesOpen: false,
+  newFor: null, newTitle: "", newRole: "helper", newBusy: false, newCreated: "", saveBusy: false, coordBusy: false, filesOpen: false,
   schedules: new Map(), scheduleFor: null, scheduleForm: null,
   deleting: null, deleteTimer: 0, dragId: null, dragTaskId: null
 }
@@ -512,15 +514,40 @@ function elapsedOf(member, state) {
 
 /* ---------------- data ---------------- */
 
+/** 面板打包的 SDK 没有请求超时；宿主不回答时会永远挂住，自己兜一层。 */
+function withTimeout(promise, ms, label) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      const error = new Error(label + " timeout")
+      error.code = "TIMEOUT"
+      reject(error)
+    }, ms)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (error) => {
+        clearTimeout(timer)
+        reject(error)
+      }
+    )
+  })
+}
+
 /** 建会话没有宿主 API，走本地服务；服务已带 exec: opencode 权限。 */
 async function createSessionRequest(directory, title, agent) {
   if (typeof host.serviceRequest !== "function") return { id: "", error: "no-service-api" }
   try {
-    const res = await host.serviceRequest({
-      method: "POST",
-      path: "/createSession",
-      body: { directory, title, agent }
-    })
+    const res = await withTimeout(
+      host.serviceRequest({
+        method: "GET",
+        path: "/createSession",
+        query: { directory, title, agent }
+      }),
+      30000,
+      "createSession"
+    )
     const text = typeof res?.body === "string" ? res.body : ""
     const data = text ? JSON.parse(text) : null
     if (data && data.sessionId) return { id: String(data.sessionId), error: "" }
@@ -657,10 +684,18 @@ async function persist(task) {
 }
 
 async function removeTask(id) {
+  const task = S.tasks.get(id)
+  const archived = task ? await archiveTaskDir(task) : { error: "no-task" }
   S.ids = S.ids.filter((x) => x !== id)
   S.tasks.delete(id)
   await writeTasks(S.ids.map((taskId) => S.tasks.get(taskId)).filter(Boolean))
   if (S.selected === id) S.selected = null
+  if (task) {
+    toast(
+      archived.path ? t("deletedMoved") : t("deletedKept") + " " + String(archived.error || ""),
+      archived.path ? "success" : "warn"
+    )
+  }
 }
 
 function visibleTasks() {
@@ -678,7 +713,28 @@ function currentTask() {
 }
 
 async function gotoSession(sessionId) {
-  await host.openSession(sessionId)
+  try {
+    await host.openSession(sessionId)
+  } catch (error) {
+    if (String((error && error.code) || "") !== "NO_SESSION") throw error
+    // 2026-11-05：宿主只缓存当前项目的会话。跨任务打开时先让它列出目标项目，
+    // 把会话灌进共享缓存，再重试一次；仍失败才把 NO_SESSION 抛出去。
+    let warmed = false
+    try {
+      const projects = await host.listProjects()
+      const projectList = Array.isArray(projects) ? projects : (projects && projects.projects) || []
+      for (const project of projectList) {
+        const snapshot = await host.listSessions(project.id)
+        const sessionList = Array.isArray(snapshot) ? snapshot : (snapshot && snapshot.sessions) || []
+        if (sessionList.some((session) => session.id === sessionId)) {
+          warmed = true
+          break
+        }
+      }
+    } catch {}
+    if (!warmed) throw error
+    await host.openSession(sessionId)
+  }
   // 目标会话可能从没开过这块面板：切过去后立刻拉一次，再补一次，防止第一次被切换过程吞掉。
   if (typeof host.openSurface === "function") {
     const open = () => host.openSurface("plugin:task-hub").catch(() => {})
@@ -1274,9 +1330,20 @@ async function renderDetail() {
   })
   moreBtn.title = t("actions")
 
+  if (!task.coordinator) {
+    headActions.append(
+      button(
+        S.coordBusy ? t("creating") : t("makeCoord"),
+        "accent",
+        () => void ensureCoordinator(task),
+        t("hintMakeCoord")
+      )
+    )
+  }
   headActions.append(
     button(t("addSession"), "accent", () => void openPicker(task), t("hintAdd")),
-    moreBtn
+    moreBtn,
+    del
   )
   head.appendChild(headActions)
   box.appendChild(head)
@@ -1841,20 +1908,127 @@ function closeForm() {
 }
 
 // 新建任务后把它注册成 OpenChamber 项目：不注册，会话移过去就会从侧栏消失。
+/** 服务端只认绝对路径：~/… 展开成家目录，斜杠统一成反斜杠。 */
+function absoluteDir(dir) {
+  return String(dir || "").replace(/^~/, "C:\\Users\\HUAWEI").replace(/\//g, "\\")
+}
+
 async function registerProject(task) {
-  if (typeof host.serviceRequest !== "function") return
-  const dir = String(task.progressDir || "")
-    .replace(/^~/, "C:\\Users\\HUAWEI")
-    .replace(/\//g, "\\")
-  if (!dir) return
+  if (typeof host.serviceRequest !== "function") return { error: "no-service-api" }
+  const dir = absoluteDir(task.progressDir)
+  if (!dir) return { error: "bad-dir" }
   try {
-    await host.serviceRequest({
-      method: "POST",
-      path: "/registerProject",
-      // 侧栏项目名与任务 id 对得上：标题 · task-<id>。
-      body: { dir, label: (task.title || task.id) + " \u00b7 " + task.id }
-    })
-  } catch {}
+    await withTimeout(
+      host.serviceRequest({
+        method: "GET",
+        path: "/registerProject",
+        // 侧栏项目名与任务 id 对得上：标题 · task-<id>。
+        query: { dir, label: (task.title || task.id) + " \u00b7 " + task.id }
+      }),
+      8000,
+      "registerProject"
+    )
+    return {}
+  } catch (error) {
+    return { error: String((error && error.code) || (error && error.message) || "ERR") }
+  }
+}
+
+// 2026-11-05：协调会话用宿主 startSession 建，会话才会进宿主缓存、点标题能打开。
+// 首条消息带上任务目录与建任务表单的信息，协调会话一开局就有上下文。
+async function startCoordinatorSession(task) {
+  if (typeof host.startSession !== "function") return { error: "no-start-session" }
+  const dir = absoluteDir(task.progressDir)
+  const projects = await host.listProjects().catch(() => null)
+  const list = projects && Array.isArray(projects.projects) ? projects.projects : []
+  const want = dir.replace(/\\/g, "/").toLowerCase()
+  const target = list.find((project) => String(project.directory || "").replace(/\\/g, "/").toLowerCase() === want)
+  if (!target) return { error: "no-project" }
+  const brief = [
+    "你是这件任务的协调会话（信箱调度）。",
+    "任务 id：" + task.id,
+    "任务目录：" + dir,
+    "标题：" + (task.title || ""),
+    "做什么：" + (task.goal || ""),
+    "验收：" + (task.acceptance || ""),
+    "",
+    "先读 " + dir + "\\HEAD.md 与 SUMMARY.md，再按 rules/task-collab.md 工作。"
+  ].join("\n")
+  const base = {
+    providerId: "task-hub",
+    id: task.id,
+    title: task.title || task.id,
+    url: "https://task-hub.local/" + encodeURIComponent(task.id),
+    projectId: target.id,
+    navigation: "preserve"
+  }
+  try {
+    let res = null
+    try {
+      res = await withTimeout(host.startSession({ ...base, text: brief }), 180000, "startSession")
+    } catch (error) {
+      // 没批 prompt 能力时，text 会被拒；退回不带首条消息，至少把会话建出来。
+      if (String((error && error.code) || "") !== "NOT_GRANTED") throw error
+      res = await withTimeout(host.startSession(base), 180000, "startSession")
+    }
+    if (res && res.sessionId) return { id: String(res.sessionId) }
+    return { error: String((res && (res.failure || res.sent)) || "no-session") }
+  } catch (error) {
+    return { error: String((error && error.code) || (error && error.message) || "ERR") }
+  }
+}
+
+// 2026-11-05：协调会话没建成的任务，事后从这里补；同时补注册项目。
+async function ensureCoordinator(task) {
+  if (S.coordBusy) return
+  S.coordBusy = true
+  render()
+  try {
+    const reg = await registerProject(task)
+    const coordTitle = t("coordPrefix") + (task.title || task.id)
+    const coord = await startCoordinatorSession(task)
+    if (!coord.id) {
+      toast(
+        t("coordFailed") + " " + String(coord.error || "") + (reg.error ? " / " + reg.error : ""),
+        "error"
+      )
+      return
+    }
+    task.coordinator = coord.id
+    task.members = Array.isArray(task.members) ? task.members : []
+    if (!task.members.some((m) => m.sessionId === coord.id)) {
+      task.members.push({ sessionId: coord.id, title: coordTitle, directory: task.id, role: "main" })
+    }
+    await persist(task)
+    toast(t("coordCreated"), "success")
+  } finally {
+    S.coordBusy = false
+    render()
+  }
+}
+
+// 删除任务时把目录移进 _backup；失败也不阻止从看板移除。
+async function archiveTaskDir(task) {
+  if (typeof host.serviceRequest !== "function") return { error: "no-service-api" }
+  const dir = absoluteDir(task.progressDir)
+  if (!dir) return { error: "bad-dir" }
+  try {
+    const res = await withTimeout(
+      host.serviceRequest({
+        method: "GET",
+        path: "/archiveTask",
+        query: { dir, id: task.id }
+      }),
+      10000,
+      "archiveTask"
+    )
+    const text = typeof res?.body === "string" ? res.body : ""
+    const data = text ? JSON.parse(text) : null
+    if (data && data.path) return { path: String(data.path) }
+    return { error: (data && data.error) || "empty" }
+  } catch (error) {
+    return { error: String((error && error.code) || (error && error.message) || "ERR") }
+  }
 }
 
 async function submitForm() {
@@ -1865,17 +2039,23 @@ async function submitForm() {
     toast(t("must"), "error")
     return
   }
+  if (S.saveBusy) return
   const dir = el("f-dir").value.trim() || defaultDir()
 
   if (S.formMode === "edit" && S.formId) {
     const task = S.tasks.get(S.formId)
     if (!task) return
-    task.title = title
-    task.goal = goal
-    task.acceptance = acceptance
-    task.progressDir = dir
-    await persist(task)
-    await ensureFolder(task, false)
+    S.saveBusy = true
+    try {
+      task.title = title
+      task.goal = goal
+      task.acceptance = acceptance
+      task.progressDir = dir
+      await persist(task)
+      await ensureFolder(task, false)
+    } finally {
+      S.saveBusy = false
+    }
     closeForm()
     render()
     toast(t("updated"), "success")
@@ -1892,15 +2072,39 @@ async function submitForm() {
     progressDir: dir.includes("<id>") ? dir.replace("<id>", id) : dir,
     createdAt: Date.now(),
     updatedAt: Date.now(),
-    members: S.me ? [{ sessionId: S.me, title: S.meTitle }] : []
+    // 2026-11-05：不把「建任务的那个会话」绑进来，任务只认自己的协调会话。
+    members: []
   }
-  await persist(task)
-  await ensureFolder(task, true)
-  await registerProject(task)
-  S.selected = task.id
-  closeForm()
-  render()
-  toast(t("created"), "success")
+  const saveBtn = el("f-save")
+  saveBtn.disabled = true
+  saveBtn.textContent = t("saving")
+  S.saveBusy = true
+  try {
+    await persist(task)
+    await ensureFolder(task, true)
+    await registerProject(task)
+    // 建任务即建协调会话：目录落在任务目录、角色固定信箱调度，不继承当前会话上下文。
+    const coordTitle = t("coordPrefix") + title
+    const coord = await startCoordinatorSession(task)
+    if (coord.id) {
+      task.coordinator = coord.id
+      task.members = [{ sessionId: coord.id, title: coordTitle, directory: task.id, role: "main" }]
+      await persist(task)
+      S.selected = task.id
+      closeForm()
+      render()
+      toast(t("created") + " · " + t("coordCreated"), "success")
+      return
+    }
+    S.selected = task.id
+    closeForm()
+    render()
+    toast(t("created") + " · " + t("coordFailed") + " " + String(coord.error || "") + "\u3002" + t("coordRetry"), "error")
+  } finally {
+    S.saveBusy = false
+    saveBtn.disabled = false
+    saveBtn.textContent = t("save")
+  }
 }
 
 /* ---------------- picker ---------------- */

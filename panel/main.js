@@ -1820,6 +1820,10 @@ ${GUEST_UI_LOOK_CSS}`;
       alias: "Display name",
       setAlias: "Rename",
       tidyTitles: "Tidy titles",
+      saving: "Saving...",
+      makeCoord: "Create coordinator",
+      hintMakeCoord: "Register this folder as a project and create a coordinator session",
+      coordRetry: "Open the task and click Create coordinator to retry",
       hintJump: "Open the coordinator session this task points to",
       hintAdd: "Create a session in this group's worktree and add it to the roster",
       hintSettle: "Overwrite HEAD, archive over-budget files, lift knowledge into RUNBOOK, sort deliverables",
@@ -1903,6 +1907,9 @@ ${GUEST_UI_LOOK_CSS}`;
       updated: "Saved",
       added: "Session added",
       already: "Already in this task",
+      coordPrefix: "Coordinator · ",
+      coordCreated: "coordinator session created",
+      coordFailed: "coordinator session failed:",
       addTo: "Add to",
       close: "Close",
       searchSessions: "Search sessions",
@@ -1959,6 +1966,10 @@ ${GUEST_UI_LOOK_CSS}`;
       alias: "显示名",
       setAlias: "改标题",
       tidyTitles: "让协调整理标题",
+      saving: "保存中…",
+      makeCoord: "建协调会话",
+      hintMakeCoord: "把目录注册成项目并建一个协调会话",
+      coordRetry: "打开任务点「建协调会话」可重试",
       hintJump: "切到这件任务设定的协调会话，不带提示词",
       hintAdd: "在这个项目组的 worktree 里新建会话，并写入名册",
       hintSettle: "让协调覆盖 HEAD、归档超限文件、把操作知识提到 RUNBOOK、整理成品",
@@ -2042,6 +2053,9 @@ ${GUEST_UI_LOOK_CSS}`;
       updated: "已保存",
       added: "已加会话",
       already: "这一方已经在里面",
+      coordPrefix: "协调 · ",
+      coordCreated: "协调会话已建",
+      coordFailed: "协调会话没建成：",
       addTo: "加进",
       close: "关闭",
       searchSessions: "搜索会话",
@@ -2087,6 +2101,8 @@ ${GUEST_UI_LOOK_CSS}`;
     newRole: "helper",
     newBusy: false,
     newCreated: "",
+    saveBusy: false,
+    coordBusy: false,
     filesOpen: false,
     schedules: /* @__PURE__ */ new Map(),
     scheduleFor: null,
@@ -2343,14 +2359,37 @@ ${GUEST_UI_LOOK_CSS}`;
     if (!S.since.has(member.sessionId)) S.since.set(member.sessionId, Date.now());
     return Date.now() - S.since.get(member.sessionId);
   }
+  function withTimeout(promise, ms, label) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const error = new Error(label + " timeout");
+        error.code = "TIMEOUT";
+        reject(error);
+      }, ms);
+      promise.then(
+        (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (error) => {
+          clearTimeout(timer);
+          reject(error);
+        }
+      );
+    });
+  }
   async function createSessionRequest(directory, title, agent) {
     if (typeof host.serviceRequest !== "function") return { id: "", error: "no-service-api" };
     try {
-      const res = await host.serviceRequest({
-        method: "POST",
-        path: "/createSession",
-        body: { directory, title, agent }
-      });
+      const res = await withTimeout(
+        host.serviceRequest({
+          method: "GET",
+          path: "/createSession",
+          query: { directory, title, agent }
+        }),
+        3e4,
+        "createSession"
+      );
       const text = typeof res?.body === "string" ? res.body : "";
       const data = text ? JSON.parse(text) : null;
       if (data && data.sessionId) return { id: String(data.sessionId), error: "" };
@@ -2478,10 +2517,18 @@ ${GUEST_UI_LOOK_CSS}`;
     await writeTasks(S.ids.map((id) => S.tasks.get(id)).filter(Boolean));
   }
   async function removeTask(id) {
+    const task = S.tasks.get(id);
+    const archived = task ? await archiveTaskDir(task) : { error: "no-task" };
     S.ids = S.ids.filter((x) => x !== id);
     S.tasks.delete(id);
     await writeTasks(S.ids.map((taskId) => S.tasks.get(taskId)).filter(Boolean));
     if (S.selected === id) S.selected = null;
+    if (task) {
+      toast(
+        archived.path ? t("deletedMoved") : t("deletedKept") + " " + String(archived.error || ""),
+        archived.path ? "success" : "warn"
+      );
+    }
   }
   function visibleTasks() {
     const text = S.query.trim().toLowerCase();
@@ -2496,7 +2543,27 @@ ${GUEST_UI_LOOK_CSS}`;
     return list.find((task) => task.id === S.selected) || list[0] || null;
   }
   async function gotoSession(sessionId) {
-    await host.openSession(sessionId);
+    try {
+      await host.openSession(sessionId);
+    } catch (error) {
+      if (String(error && error.code || "") !== "NO_SESSION") throw error;
+      let warmed = false;
+      try {
+        const projects = await host.listProjects();
+        const projectList = Array.isArray(projects) ? projects : projects && projects.projects || [];
+        for (const project of projectList) {
+          const snapshot = await host.listSessions(project.id);
+          const sessionList = Array.isArray(snapshot) ? snapshot : snapshot && snapshot.sessions || [];
+          if (sessionList.some((session) => session.id === sessionId)) {
+            warmed = true;
+            break;
+          }
+        }
+      } catch {
+      }
+      if (!warmed) throw error;
+      await host.openSession(sessionId);
+    }
     if (typeof host.openSurface === "function") {
       const open = () => host.openSurface("plugin:task-hub").catch(() => {
       });
@@ -3044,9 +3111,20 @@ ${GUEST_UI_LOOK_CSS}`;
       void renderDetail();
     });
     moreBtn.title = t("actions");
+    if (!task.coordinator) {
+      headActions.append(
+        button2(
+          S.coordBusy ? t("creating") : t("makeCoord"),
+          "accent",
+          () => void ensureCoordinator(task),
+          t("hintMakeCoord")
+        )
+      );
+    }
     headActions.append(
       button2(t("addSession"), "accent", () => void openPicker(task), t("hintAdd")),
-      moreBtn
+      moreBtn,
+      del
     );
     head.appendChild(headActions);
     box.appendChild(head);
@@ -3556,18 +3634,116 @@ ${GUEST_UI_LOOK_CSS}`;
   function closeForm() {
     el2("form").classList.remove("show");
   }
+  function absoluteDir(dir) {
+    return String(dir || "").replace(/^~/, "C:\\Users\\HUAWEI").replace(/\//g, "\\");
+  }
   async function registerProject(task) {
-    if (typeof host.serviceRequest !== "function") return;
-    const dir = String(task.progressDir || "").replace(/^~/, "C:\\Users\\HUAWEI").replace(/\//g, "\\");
-    if (!dir) return;
+    if (typeof host.serviceRequest !== "function") return { error: "no-service-api" };
+    const dir = absoluteDir(task.progressDir);
+    if (!dir) return { error: "bad-dir" };
     try {
-      await host.serviceRequest({
-        method: "POST",
-        path: "/registerProject",
-        // 侧栏项目名与任务 id 对得上：标题 · task-<id>。
-        body: { dir, label: (task.title || task.id) + " · " + task.id }
-      });
-    } catch {
+      await withTimeout(
+        host.serviceRequest({
+          method: "GET",
+          path: "/registerProject",
+          // 侧栏项目名与任务 id 对得上：标题 · task-<id>。
+          query: { dir, label: (task.title || task.id) + " · " + task.id }
+        }),
+        8e3,
+        "registerProject"
+      );
+      return {};
+    } catch (error) {
+      return { error: String(error && error.code || error && error.message || "ERR") };
+    }
+  }
+  async function startCoordinatorSession(task) {
+    if (typeof host.startSession !== "function") return { error: "no-start-session" };
+    const dir = absoluteDir(task.progressDir);
+    const projects = await host.listProjects().catch(() => null);
+    const list = projects && Array.isArray(projects.projects) ? projects.projects : [];
+    const want = dir.replace(/\\/g, "/").toLowerCase();
+    const target = list.find((project) => String(project.directory || "").replace(/\\/g, "/").toLowerCase() === want);
+    if (!target) return { error: "no-project" };
+    const brief = [
+      "你是这件任务的协调会话（信箱调度）。",
+      "任务 id：" + task.id,
+      "任务目录：" + dir,
+      "标题：" + (task.title || ""),
+      "做什么：" + (task.goal || ""),
+      "验收：" + (task.acceptance || ""),
+      "",
+      "先读 " + dir + "\\HEAD.md 与 SUMMARY.md，再按 rules/task-collab.md 工作。"
+    ].join("\n");
+    const base = {
+      providerId: "task-hub",
+      id: task.id,
+      title: task.title || task.id,
+      url: "https://task-hub.local/" + encodeURIComponent(task.id),
+      projectId: target.id,
+      navigation: "preserve"
+    };
+    try {
+      let res = null;
+      try {
+        res = await withTimeout(host.startSession({ ...base, text: brief }), 18e4, "startSession");
+      } catch (error) {
+        if (String(error && error.code || "") !== "NOT_GRANTED") throw error;
+        res = await withTimeout(host.startSession(base), 18e4, "startSession");
+      }
+      if (res && res.sessionId) return { id: String(res.sessionId) };
+      return { error: String(res && (res.failure || res.sent) || "no-session") };
+    } catch (error) {
+      return { error: String(error && error.code || error && error.message || "ERR") };
+    }
+  }
+  async function ensureCoordinator(task) {
+    if (S.coordBusy) return;
+    S.coordBusy = true;
+    render();
+    try {
+      const reg = await registerProject(task);
+      const coordTitle = t("coordPrefix") + (task.title || task.id);
+      const coord = await startCoordinatorSession(task);
+      if (!coord.id) {
+        toast(
+          t("coordFailed") + " " + String(coord.error || "") + (reg.error ? " / " + reg.error : ""),
+          "error"
+        );
+        return;
+      }
+      task.coordinator = coord.id;
+      task.members = Array.isArray(task.members) ? task.members : [];
+      if (!task.members.some((m) => m.sessionId === coord.id)) {
+        task.members.push({ sessionId: coord.id, title: coordTitle, directory: task.id, role: "main" });
+      }
+      await persist(task);
+      toast(t("coordCreated"), "success");
+    } finally {
+      S.coordBusy = false;
+      render();
+    }
+  }
+  async function archiveTaskDir(task) {
+    if (typeof host.serviceRequest !== "function") return { error: "no-service-api" };
+    const dir = absoluteDir(task.progressDir);
+    if (!dir) return { error: "bad-dir" };
+    try {
+      const res = await withTimeout(
+        host.serviceRequest({
+          method: "GET",
+          path: "/archiveTask",
+          query: { dir, id: task.id }
+        }),
+        1e4,
+        "archiveTask"
+      );
+      const text = typeof res?.body === "string" ? res.body : "";
+      const data = text ? JSON.parse(text) : null;
+      if (data && data.path) return { path: String(data.path) };
+      return { error: data && data.error || "empty" };
+    } catch (error) {
+      return { error: String(error && error.code || error && error.message || "ERR") };
     }
   }
   async function submitForm() {
@@ -3578,16 +3754,22 @@ ${GUEST_UI_LOOK_CSS}`;
       toast(t("must"), "error");
       return;
     }
+    if (S.saveBusy) return;
     const dir = el2("f-dir").value.trim() || defaultDir();
     if (S.formMode === "edit" && S.formId) {
       const task2 = S.tasks.get(S.formId);
       if (!task2) return;
-      task2.title = title;
-      task2.goal = goal;
-      task2.acceptance = acceptance;
-      task2.progressDir = dir;
-      await persist(task2);
-      await ensureFolder(task2, false);
+      S.saveBusy = true;
+      try {
+        task2.title = title;
+        task2.goal = goal;
+        task2.acceptance = acceptance;
+        task2.progressDir = dir;
+        await persist(task2);
+        await ensureFolder(task2, false);
+      } finally {
+        S.saveBusy = false;
+      }
       closeForm();
       render();
       toast(t("updated"), "success");
@@ -3602,15 +3784,38 @@ ${GUEST_UI_LOOK_CSS}`;
       progressDir: dir.includes("<id>") ? dir.replace("<id>", id) : dir,
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      members: S.me ? [{ sessionId: S.me, title: S.meTitle }] : []
+      // 2026-11-05：不把「建任务的那个会话」绑进来，任务只认自己的协调会话。
+      members: []
     };
-    await persist(task);
-    await ensureFolder(task, true);
-    await registerProject(task);
-    S.selected = task.id;
-    closeForm();
-    render();
-    toast(t("created"), "success");
+    const saveBtn = el2("f-save");
+    saveBtn.disabled = true;
+    saveBtn.textContent = t("saving");
+    S.saveBusy = true;
+    try {
+      await persist(task);
+      await ensureFolder(task, true);
+      await registerProject(task);
+      const coordTitle = t("coordPrefix") + title;
+      const coord = await startCoordinatorSession(task);
+      if (coord.id) {
+        task.coordinator = coord.id;
+        task.members = [{ sessionId: coord.id, title: coordTitle, directory: task.id, role: "main" }];
+        await persist(task);
+        S.selected = task.id;
+        closeForm();
+        render();
+        toast(t("created") + " · " + t("coordCreated"), "success");
+        return;
+      }
+      S.selected = task.id;
+      closeForm();
+      render();
+      toast(t("created") + " · " + t("coordFailed") + " " + String(coord.error || "") + "。" + t("coordRetry"), "error");
+    } finally {
+      S.saveBusy = false;
+      saveBtn.disabled = false;
+      saveBtn.textContent = t("save");
+    }
   }
   function renderPicker() {
     const box = el2("p-list");

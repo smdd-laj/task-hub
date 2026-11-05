@@ -10,9 +10,9 @@
  * 每个请求带 Authorization: Bearer OPENCHAMBER_SERVICE_TOKEN，GET /health 就绪。
  */
 import http from "node:http"
-import { readFileSync, writeFileSync, appendFileSync, mkdirSync } from "node:fs"
+import { readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync, renameSync } from "node:fs"
 import { homedir } from "node:os"
-import { join } from "node:path"
+import { join, dirname } from "node:path"
 import { execFile } from "node:child_process"
 
 const PORT = Number(process.env.OPENCHAMBER_SERVICE_PORT || 0)
@@ -34,6 +34,15 @@ function log(line) {
     appendFileSync(LOG_FILE, `${new Date().toISOString()} ${line}\n`)
   } catch {}
 }
+
+// 2026-11-05：服务静默退出会让面板的 serviceRequest 一直挂着；先把死因落盘。
+process.on("uncaughtException", (error) => {
+  log(`uncaughtException ${String((error && error.stack) || error).slice(0, 1500)}`)
+  process.exit(1)
+})
+process.on("unhandledRejection", (reason) => {
+  log(`unhandledRejection ${String((reason && reason.stack) || reason).slice(0, 1500)}`)
+})
 
 /** sessionID -> { running, since, lastMs, updatedAt } */
 const states = new Map()
@@ -229,7 +238,16 @@ function registerProject(dir, label) {
     const settings = JSON.parse(readFileSync(OPENCHAMBER_SETTINGS, "utf8"))
     const id = projectIdFor(dir)
     const projects = Array.isArray(settings.projects) ? settings.projects : []
-    if (projects.some((p) => p.id === id || p.path === dir)) return { id, added: false }
+    const existing = projects.find((p) => p.id === id || p.path === dir)
+    if (existing) {
+      // 任务项目默认建出来的会话就是协调会话（2026-11-05）。
+      if (existing.defaultAgent !== "信箱调度") {
+        existing.defaultAgent = "信箱调度"
+        settings.projects = projects
+        writeFileSync(OPENCHAMBER_SETTINGS, JSON.stringify(settings, null, 2) + "\n", "utf8")
+      }
+      return { id, added: false }
+    }
     const now = Date.now()
     projects.push({
       id,
@@ -237,7 +255,7 @@ function registerProject(dir, label) {
       label: label || dir.split(/[\\/]/).filter(Boolean).pop(),
       icon: "folder",
       color: "type",
-      defaultAgent: "流式开发主代理",
+      defaultAgent: "信箱调度",
       addedAt: now,
       lastOpenedAt: now,
       iconBackground: null,
@@ -407,6 +425,8 @@ async function cliSeed(force = false) {
 const server = http.createServer(async (req, res) => {
   const auth = req.headers.authorization || ""
   if (TOKEN && auth !== `Bearer ${TOKEN}`) {
+    // 2026-11-05：宿主等不到 ready 时所有 serviceRequest 都会 20s 超时，先把鉴权失败记下来。
+    log(`auth rejected path=${req.url} auth=${auth ? "present" : "missing"}`)
     res.writeHead(401, { "content-type": "application/json" })
     res.end('{"error":"unauthorized"}')
     return
@@ -415,6 +435,7 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", "http://127.0.0.1")
 
   if (url.pathname === "/health") {
+    log("health ok")
     res.writeHead(200, { "content-type": "application/json" })
     res.end('{"ok":true}')
     return
@@ -453,17 +474,27 @@ const server = http.createServer(async (req, res) => {
 
   // 面板没有建会话能力（宿主只给 startSession，带 chip 语义），建会话统一走这里，
   // 面板拿到 id 后自己写进 tasks.json 的 members。
-  if (url.pathname === "/createSession" && req.method === "POST") {
-    const raw = await readBody(req)
-    let body = null
-    try {
-      body = raw ? JSON.parse(raw) : null
-    } catch {
-      body = null
+  // 宿主代理的 POST body 会丢（2026-11-05 实测：GET 正常、POST 必超时），所以 GET 为主，POST 兼容。
+  if (url.pathname === "/createSession" && (req.method === "GET" || req.method === "POST")) {
+    let directory = ""
+    let title = ""
+    let agent = ""
+    if (req.method === "GET") {
+      directory = String(url.searchParams.get("directory") || "").trim()
+      title = String(url.searchParams.get("title") || "").trim()
+      agent = String(url.searchParams.get("agent") || "").trim()
+    } else {
+      const raw = await readBody(req)
+      let body = null
+      try {
+        body = raw ? JSON.parse(raw) : null
+      } catch {
+        body = null
+      }
+      directory = String((body && body.directory) || "").trim()
+      title = String((body && body.title) || "").trim()
+      agent = String((body && body.agent) || "").trim()
     }
-    const directory = String((body && body.directory) || "").trim()
-    const title = String((body && body.title) || "").trim()
-    const agent = String((body && body.agent) || "").trim()
 
     const segments = directory.split(/[\\/]/)
     const drivePath = /^[A-Za-z]:[\\/]/.test(directory)
@@ -496,16 +527,69 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
-  if (url.pathname === "/registerProject" && req.method === "POST") {
-    const raw = await readBody(req)
-    let body = null
-    try {
-      body = raw ? JSON.parse(raw) : null
-    } catch {
-      body = null
+  // 删除任务时把目录移进 _backup（软删除，可找回），不直接抹掉。
+  if (url.pathname === "/archiveTask" && (req.method === "GET" || req.method === "POST")) {
+    let dir = ""
+    let id = ""
+    if (req.method === "GET") {
+      dir = String(url.searchParams.get("dir") || "").trim()
+      id = String(url.searchParams.get("id") || "").trim()
+    } else {
+      const raw = await readBody(req)
+      let body = null
+      try {
+        body = raw ? JSON.parse(raw) : null
+      } catch {
+        body = null
+      }
+      dir = String((body && body.dir) || "").trim()
+      id = String((body && body.id) || "").trim()
     }
-    const dir = String((body && body.dir) || "").trim()
-    const label = String((body && body.label) || "").trim()
+    const abs = dir ? join(dir) : ""
+    if (
+      !/^(task-|t_)[A-Za-z0-9_-]+$/.test(id) ||
+      !abs ||
+      dirname(abs).toLowerCase() !== TASKS_ROOT.toLowerCase() ||
+      !existsSync(abs)
+    ) {
+      res.writeHead(400, { "content-type": "application/json" })
+      res.end('{"error":"bad-task"}')
+      return
+    }
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)
+    const target = join(TASKS_ROOT, "_backup", id + "-" + stamp)
+    try {
+      mkdirSync(join(TASKS_ROOT, "_backup"), { recursive: true })
+      renameSync(abs, target)
+    } catch (error) {
+      log("archiveTask failed " + id + " " + String((error && error.message) || error).slice(0, 200))
+      res.writeHead(500, { "content-type": "application/json" })
+      res.end(JSON.stringify({ error: "archive-failed", detail: String((error && error.message) || error).slice(0, 200) }))
+      return
+    }
+    log("archiveTask " + id + " -> " + target)
+    res.writeHead(200, { "content-type": "application/json" })
+    res.end(JSON.stringify({ moved: true, path: target }))
+    return
+  }
+
+  if (url.pathname === "/registerProject" && (req.method === "GET" || req.method === "POST")) {
+    let dir = ""
+    let label = ""
+    if (req.method === "GET") {
+      dir = String(url.searchParams.get("dir") || "").trim()
+      label = String(url.searchParams.get("label") || "").trim()
+    } else {
+      const raw = await readBody(req)
+      let body = null
+      try {
+        body = raw ? JSON.parse(raw) : null
+      } catch {
+        body = null
+      }
+      dir = String((body && body.dir) || "").trim()
+      label = String((body && body.label) || "").trim()
+    }
     if (!dir.startsWith(TASKS_ROOT) || dir.split(/[\\/]/).includes("..")) {
       res.writeHead(400, { "content-type": "application/json" })
       res.end('{"error":"bad-dir"}')
@@ -584,9 +668,11 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`[task-hub] service on 127.0.0.1:${PORT}`)
   log(`listening port=${PORT}`)
-  void followStream()
-  void cliSeed()
+  followStream().catch((error) => log(`stream loop failed ${String((error && error.message) || error)}`))
+  cliSeed().catch((error) => log(`seed failed ${String((error && error.message) || error)}`))
   loadSchedules()
-  setInterval(() => void tickSchedules(), 30000)
-  void tickSchedules()
+  setInterval(() => {
+    tickSchedules().catch((error) => log(`schedule tick failed ${String((error && error.message) || error)}`))
+  }, 30000)
+  tickSchedules().catch((error) => log(`schedule tick failed ${String((error && error.message) || error)}`))
 })
