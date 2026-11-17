@@ -18,7 +18,7 @@ const TASKS_ROOT = path.join(HOME, ".task-hub", "tasks")
 const TASKS_FILE = path.join(HOME, ".task-hub", "tasks.json")
 const REPOS_FILE = path.join(HOME, ".task-hub", "repos.json")
 const SETTINGS_FILE = path.join(HOME, ".config", "openchamber", "settings.json")
-const AGENTS = new Set(["信箱调度", "流式开发主代理", "值班调度"])
+const AGENTS = new Set(["信箱调度", "分档开发主代理", "流式开发主代理", "值班调度"])
 
 const argv = process.argv.slice(2)
 const cmd = argv[0] || "help"
@@ -86,7 +86,7 @@ function registerProject(dir, label) {
     label,
     icon: "folder",
     color: "type",
-    defaultAgent: "流式开发主代理",
+    defaultAgent: "信箱调度",
     addedAt: now,
     lastOpenedAt: now,
     iconBackground: null,
@@ -196,6 +196,7 @@ function isGitRoot(dir) {
 }
 
 function gitignoreHasWorktrees(repoPath) {
+  // 2026-11-13：新 worktree 默认不再进仓内 .worktrees。函数保留，当前建路径不调用。
   for (const name of [".gitignore"]) {
     const p = path.join(repoPath, name)
     if (!fs.existsSync(p)) continue
@@ -207,10 +208,7 @@ function gitignoreHasWorktrees(repoPath) {
 
 function worktreePathFor(repoPath, name, style) {
   if (style === "dot") return path.join(repoPath, ".worktrees", name)
-  if (style === "sibling") return path.join(path.dirname(repoPath), path.basename(repoPath) + "--worktrees", name)
-  return gitignoreHasWorktrees(repoPath)
-    ? path.join(repoPath, ".worktrees", name)
-    : path.join(path.dirname(repoPath), path.basename(repoPath) + "--worktrees", name)
+  return path.join(path.dirname(repoPath), path.basename(repoPath) + "--worktrees", name)
 }
 
 function validBranch(branch) {
@@ -315,50 +313,74 @@ function cmdWorktreeCreate() {
   const taskId = String(flags.task || "").trim()
   const repoArg = String(flags.repo || "").trim()
   const branch = String(flags.branch || "").trim()
-  if (!taskId || !repoArg || !branch) fail("missing-fields", "--task --repo --branch 都要给")
-  if (!validBranch(branch)) fail("bad-branch", "只允许 feature/<slug> 或 hotfix/<slug>，ASCII，≤60 字符")
+  if (!repoArg || !branch) fail("missing-fields", "--repo --branch 都要给（绑任务时再加 --task）")
 
-  const data = loadTasks()
-  const task = findTask(data, taskId)
+  // 2026-11-14：长期 worktree（test / develop / release）常驻，不绑任务、不进基线表。
+  const longLived = Boolean(flags["long-lived"])
+  const LONG_LIVED = new Set(["test", "develop", "release", "master", "main"])
+  if (longLived) {
+    if (!LONG_LIVED.has(branch)) fail("bad-long-lived-branch", "长期 worktree 只允许 test / develop / release / master / main")
+  } else {
+    if (!taskId) fail("missing-fields", "绑任务的 worktree 必须给 --task")
+    if (!validBranch(branch)) fail("bad-branch", "只允许 feature/<slug> 或 hotfix/<slug>，ASCII，≤60 字符（长期分支加 --long-lived）")
+  }
+
+  const data = longLived ? null : loadTasks()
+  const task = longLived ? null : findTask(data, taskId)
   const repo = resolveRepo(repoArg)
   const repoPath = path.normalize(expandHome(repo.path))
   if (!isGitRoot(repoPath)) fail("repo-not-git-root", repoPath)
 
   const base = String(flags.base || repo.base || "master").trim()
-  const name = branch.split("/").slice(1).join("-")
+  // 长期 worktree：目录名就是分支名（test / develop / release），从同名远端分支检出
+  const name = longLived ? branch : branch.split("/").slice(1).join("-")
   const wtPath = worktreePathFor(repoPath, name, repo.worktreeStyle)
   if (fs.existsSync(wtPath)) fail("path-exists", wtPath)
-
-  const branchExists = git(["rev-parse", "--verify", "refs/heads/" + branch], repoPath, 15000)
-  if (branchExists.ok) fail("branch-exists", branch)
 
   let fetchNote = ""
   const fetched = git(["fetch", "origin", "--prune"], repoPath, 60000)
   if (!fetched.ok) fetchNote = "fetch-failed: " + (fetched.err || fetched.message).slice(0, 160)
 
-  const originBase = "origin/" + base
-  const hasOrigin = git(["rev-parse", "--verify", originBase], repoPath, 15000).ok
-  const baseRef = hasOrigin ? originBase : base
-  const baseCheck = git(["rev-parse", "--verify", baseRef], repoPath, 15000)
-  if (!baseCheck.ok) fail("base-unknown", baseRef)
-  const baseSha = baseCheck.out.trim()
+  let addArgs
+  let baseRef
+  if (longLived) {
+    // 长期分支：本地已有就复用，没有就从 origin/<branch> 建跟踪分支
+    const localExists = git(["rev-parse", "--verify", "refs/heads/" + branch], repoPath, 15000).ok
+    const originRef = "origin/" + branch
+    const hasOrigin = git(["rev-parse", "--verify", originRef], repoPath, 15000).ok
+    if (!localExists && !hasOrigin) fail("branch-unknown", branch)
+    baseRef = localExists ? branch : originRef
+    addArgs = localExists
+      ? ["worktree", "add", wtPath, branch]
+      : ["worktree", "add", "--track", "-b", branch, wtPath, originRef]
+  } else {
+    const branchExists = git(["rev-parse", "--verify", "refs/heads/" + branch], repoPath, 15000)
+    if (branchExists.ok) fail("branch-exists", branch)
+    const originBase = "origin/" + base
+    const hasOrigin = git(["rev-parse", "--verify", originBase], repoPath, 15000).ok
+    baseRef = hasOrigin ? originBase : base
+    const baseCheck = git(["rev-parse", "--verify", baseRef], repoPath, 15000)
+    if (!baseCheck.ok) fail("base-unknown", baseRef)
+    addArgs = ["worktree", "add", "-b", branch, wtPath, baseRef]
+  }
 
-  const plan = { task: taskId, repo: repo.alias || path.basename(repoPath), path: wtPath, branch, base, baseRef, baseSha, fetchNote }
+  const baseSha = (git(["rev-parse", "--verify", baseRef], repoPath, 15000).out || "").trim()
+  const plan = { task: longLived ? null : taskId, repo: repo.alias || path.basename(repoPath), path: wtPath, branch, baseRef, baseSha, longLived, fetchNote }
   if (flags["dry-run"]) return ok({ dryRun: true, ...plan })
 
-  const added = git(["worktree", "add", "-b", branch, wtPath, baseRef], repoPath, 900000)
+  const added = git(addArgs, repoPath, 900000)
   if (!added.ok) fail("worktree-failed", (added.err || added.message || added.out).slice(0, 600))
 
   const head = git(["rev-parse", "--short", "HEAD"], wtPath, 15000)
-  // 并行建多个 worktree 时，各自写 tasks.json 会互相覆盖：由协调方事后串行 repo-record。
-  if (!flags["no-record"]) {
+  // 长期 worktree 不绑任务，不写 tasks.json
+  if (!longLived && !flags["no-record"]) {
     task.repos = Array.isArray(task.repos) ? task.repos : []
     task.repos.push({ alias: repo.alias || path.basename(repoPath), path: wtPath, branch, base, createdAt: Date.now() })
     task.updatedAt = Date.now()
     saveTasks(data)
   }
 
-  ok({ task: taskId, repo: repo.alias || path.basename(repoPath), path: wtPath, branch, base, head: head.out.trim(), fetchNote })
+  ok({ task: longLived ? null : taskId, repo: repo.alias || path.basename(repoPath), path: wtPath, branch, baseRef, head: head.out.trim(), longLived, fetchNote })
 }
 
 function cmdRepoRecord() {
@@ -388,7 +410,7 @@ function cmdRepoRecord() {
 function cmdSessionCreate() {
   const dir = path.normalize(expandHome(String(flags.dir || "")))
   const title = String(flags.title || "").trim()
-  const agent = String(flags.agent || "流式开发主代理").trim()
+  const agent = String(flags.agent || "分档开发主代理").trim()
   if (!dir || !path.isAbsolute(dir)) fail("bad-dir", "必须是绝对路径")
   if (!fs.existsSync(dir)) fail("dir-missing", dir)
   if (!title) fail("missing-title", "--title 必填")
@@ -434,8 +456,9 @@ function help() {
     "  taskhub repo-list",
     "  taskhub task-create --title <t> --goal <g> --accept <a> [--dir <abs>] [--dry-run]",
     "  taskhub worktree-create --task <id> --repo <alias> --branch feature/<slug> [--base master] [--no-record] [--dry-run]",
+    "  taskhub worktree-create --repo <alias> --branch test|develop|release --long-lived [--dry-run]   # 长期 worktree，不绑任务",
     "  taskhub repo-record --task <id> --repo <alias> --path <abs> --branch feature/<slug> [--base master] [--dry-run]",
-    "  taskhub session-create --dir <abs> --title <t> [--agent 流式开发主代理|信箱调度|值班调度]",
+    "  taskhub session-create --dir <abs> --title <t> [--agent 分档开发主代理|信箱调度|值班调度|流式开发主代理]",
     "  taskhub member-add --task <id> --session <ses_x> --title <t> [--role main|helper] [--dir <label>]",
     "  taskhub task-show --task <id>",
     "",
@@ -451,7 +474,7 @@ const table = {
   "repo-record": cmdRepoRecord,
   "session-create": cmdSessionCreate,
   "member-add": cmdMemberAdd,
-  "task-show": cmdTaskShow
+  "task-show": cmdTaskShow,
 }
 
 if (cmd === "help" || cmd === "--help" || cmd === "-h") help()

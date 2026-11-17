@@ -7,6 +7,7 @@ const el = (id) => document.getElementById(id)
 const DEFAULT_ROOT = "~/.task-hub/tasks"
 const FILE_TASKS = "~/.task-hub/tasks.json"
 const FILE_SETTINGS = "~/.task-hub/settings.json"
+const FILE_REPOS = "~/.task-hub/repos.json"
 const KEY_SELECTED = "taskhub.selected"
 const AUTO_KEY = "taskhub.auto"
 const AUTO_MS = 1500
@@ -21,17 +22,18 @@ const FILE_BUDGET = {
 const DICT = {
   en: {
     tasks: "Tasks", auto: "Auto", on: "On", newTask: "New", refresh: "Refresh",
+    refreshSizes: "Re-read file sizes",
     search: "Search tasks", sort: "Sort", manual: "Manual", name: "Name", members: "Sessions",
     none: "No tasks yet", noMatch: "No matching tasks", pick: "Pick a task on the left",
     you: "You", edit: "Edit", addSession: "Add session", delete: "Delete", confirm: "Click again",
     progress: "Progress folder", copyPath: "Copy path", copyDone: "Path copied",
     external: "external", unreadable: "External folder: the panel records and copies the path but does not read its files.",
     readFail: "Cannot read folder",
-    running: "running", runningChild: "subagent", waiting: "waiting", idle: "idle", failed: "failed", unknown: "—",
+    running: "running", runningChild: "subagent", waiting: "waiting for answer", idle: "idle", statusWaiting: "waiting", statusRunning: "running", failed: "failed", unknown: "—",
     lastTurn: "last", done: "done", noFolder: "no folder",
     roleMain: "main", roleHelper: "helper", roleNone: "unset", actions: "Actions",
     setMain: "Make main", setHelper: "Make helper",
-    fillHelpers: "Fill helpers", overCap: "over 3", noCoord: "No coordinator set", copyId: "Copy id", alias: "Display name", setAlias: "Rename", tidyTitles: "Tidy titles", saving: "Saving...", makeCoord: "Create coordinator", hintMakeCoord: "Register this folder as a project and create a coordinator session", coordRetry: "Open the task and click Create coordinator to retry",
+    fillHelpers: "Fill helpers", overCap: "over 3", noCoord: "No coordinator set", copyId: "Copy id", copyShort: "Double-click to copy the full session id", alias: "Display name", setAlias: "Rename", tidyTitles: "Tidy titles", saving: "Saving...", makeCoord: "Create coordinator", hintMakeCoord: "Register this folder as a project and create a coordinator session", coordRetry: "Open the task and click Create coordinator to retry", coordRetrying: "Coordinator creation is being retried in the background",
     hintJump: "Open the coordinator session this task points to",
     hintAdd: "Create a session in this group's worktree and add it to the roster",
     hintSettle: "Overwrite HEAD, archive over-budget files, lift knowledge into RUNBOOK, sort deliverables",
@@ -79,7 +81,7 @@ const DICT = {
       kind === "progress"
         ? "Your progress file " + dir + "/progress/" + name + " is over budget. Compress only your own file: move the earliest half to " + dir + "/archive/" + name + "-<YYYY-MM>.md, keep the latest half plus the pointer line at the top, never drop items that are still open, never turn an undecided judgement into a conclusion. Reply in one line: lines moved and lines kept. Do not touch other sessions progress, HEAD, SUMMARY or DECISIONS."
         : "Task \"" + title + "\": " + dir + "/" + name + " is over budget. Shrink it per rules/task-collab.md section 8: keep only what is still current, move the older half to " + dir + "/archive/" + name + "-<YYYY-MM>.md, keep the pointer line at the top, never drop settled conclusions or their sources. Reply in one line: what changed and how many lines remain.",
-    newSession: "New session", newSessionTitle: "Session name", newSessionRole: "Role", noDirectory: "This group has no absolute path to create in", sessionCreated: "Session created", creating: "Creating",
+    newSession: "New session", newSessionTitle: "Session name", newSessionRole: "Role", noDirectory: "This group has no absolute path to create in", sessionCreated: "Session created", creating: "Creating", firstMessage: "First message", sendNow: "Create and send", sent: "Sent", sendFailed: "Session created, first message was not sent",
     orphan: "Created but not saved to the roster",
     fillPrompt: (title, dir, member) =>
       "For task \"" + title + "\" add helper sessions for the worktree of \"" + member + "\". Read " + dir + " first. " +
@@ -96,6 +98,13 @@ const DICT = {
       "4. Report: one line on which files changed, how many lines were archived, and HEAD in three sentences; list anything that needs my decision separately.\n\n" +
       "Credentials: write where they live, never their value. Do not touch business code, do not commit, push or merge.",
     patrol: "Run a patrol",
+    foldAll: "Collapse sessions",
+    foldOpen: "Expand sessions",
+    phase_active: "Active",
+    phase_done: "Done",
+    phase_dropped: "Dropped",
+    phaseEmpty: "Nothing on this tab",
+    phaseMoved: "Moved",
     patrolPrompt: (title, dir) =>
       "Run one patrol round for task \"" + title + "\" as the coordinator. Read C:\\Users\\HUAWEI\\.task-hub\\tasks.json and " + dir + ", then HEAD.md, SUMMARY.md, RUNBOOK.md and DECISIONS.md, plus only the last three sections of the progress files that changed this round. Sort every member into running / can-advance / needs-user / done. Send only the can-advance ones a four-part message (new info / one checkable action / stop condition / which file to write, with 【回话】 and returnResult). Append sourced conclusions to SUMMARY.md. Ask me only on hard boundaries (production change, deleting data, merging master or release, messaging outside systems); settle wording and implementation choices from the records yourself and say what you decided. Move loose deliverables into deliverables/ before you report. Report every member as \"name + full session id\".",
     summarize: "Ask coordinator", summaryQueued: "Switched to the coordinator, prompt is in its chat box",
@@ -105,6 +114,7 @@ const DICT = {
       "Tidy the session names for task \"" + title + "\". Read tasks.json and " + dir + ", then for every member set alias to \"<short project> - <what it is doing now>\": take the short project name from its worktree or directory (for example 微服务, 收银后端, goframe, cashier, H5), and describe the current concrete job from the newest progress file rather than the opening greeting. Rename the session itself with session_rename when you are sure; skip when the evidence is thin and list those instead. Write the result back to tasks.json and report each change as old -> new with the reason.",
     coord: "coordinator", coordGroup: "coordinator here", coordShort: "C",
     setCoord: "Make coordinator", clearCoord: "Unset coordinator",
+    execCoord: "A session under an execution branch cannot be the coordinator",
     compose: "To chat box", composed: "Added to the chat box, send it yourself",
     remove: "Remove", open: "Open this session", gone: "Session not found",
     save: "Save", cancel: "Cancel", title: "Task name", goal: "What it is", accept: "Done when",
@@ -118,16 +128,17 @@ const DICT = {
   },
   zh: {
     tasks: "任务", auto: "自动", on: "开", newTask: "新建", refresh: "刷新",
+    refreshSizes: "重读文件体积",
     search: "搜索任务", sort: "排序", manual: "手动", name: "名称", members: "会话数",
     none: "还没有任务", noMatch: "没有匹配的任务", pick: "左边选一件任务",
     you: "你在里面", edit: "编辑", addSession: "加会话", delete: "删除", confirm: "再点删除",
     progress: "进度目录", copyPath: "复制路径", copyDone: "路径已复制",
     external: "外部", unreadable: "外部目录：面板只记录和复制路径，不读取里面的文件。", readFail: "读不到目录",
-    running: "运行中", runningChild: "子代理", waiting: "等待", idle: "空闲", failed: "失败", unknown: "—",
+    running: "运行中", runningChild: "子代理", waiting: "待回答", idle: "空闲", statusWaiting: "待回答", statusRunning: "运行中", failed: "失败", unknown: "—",
     lastTurn: "上轮", done: "完成", noFolder: "无目录",
     roleMain: "主线", roleHelper: "辅助", roleNone: "未标", actions: "操作",
     setMain: "设为主线", setHelper: "设为辅助",
-    fillHelpers: "补充看板会话", overCap: "超过三个", noCoord: "这件任务还没设协调会话", copyId: "复制会话 id", alias: "显示名", setAlias: "改标题", tidyTitles: "让协调整理标题", saving: "保存中…", makeCoord: "建协调会话", hintMakeCoord: "把目录注册成项目并建一个协调会话", coordRetry: "打开任务点「建协调会话」可重试",
+    fillHelpers: "补充看板会话", overCap: "超过三个", noCoord: "这件任务还没设协调会话", copyId: "复制会话 id", copyShort: "双击复制完整会话 id", alias: "显示名", setAlias: "改标题", tidyTitles: "让协调整理标题", saving: "保存中…", makeCoord: "建协调会话", hintMakeCoord: "把目录注册成项目并建一个协调会话", coordRetry: "打开任务点「建协调会话」可重试", coordRetrying: "协调会话正在后台补建，稍等",
     hintJump: "切到这件任务设定的协调会话，不带提示词",
     hintAdd: "在这个项目组的 worktree 里新建会话，并写入名册",
     hintSettle: "让协调覆盖 HEAD、归档超限文件、把操作知识提到 RUNBOOK、整理成品",
@@ -175,7 +186,7 @@ const DICT = {
       kind === "progress"
         ? "你这份 progress 已超预算：" + dir + "/progress/" + name + "。只压缩你自己的文件：把最早一半移进 " + dir + "/archive/" + name + "-<YYYY-MM>.md，正文留最近一半并保留顶部指针行；未闭环的项不许删，没定的判断不许写成结论。压完回一行：移了多少行、还剩多少行。不要动别人的 progress，也不改 HEAD / SUMMARY / DECISIONS。"
         : "任务「" + title + "」的 " + dir + "/" + name + " 已超预算。按 rules/task-collab.md 第八节收敛：只留当前有效内容，把较早的一半移进 " + dir + "/archive/" + name + "-<YYYY-MM>.md，正文保留顶部指针行；已定结论与出处不许丢。压完回一行：改了什么、现在剩多少行。",
-    newSession: "新会话", newSessionTitle: "会话名", newSessionRole: "角色", noDirectory: "这一组拿不到绝对路径，不能建会话", sessionCreated: "已建会话", creating: "创建中",
+    newSession: "新会话", newSessionTitle: "会话名", newSessionRole: "角色", noDirectory: "这一组拿不到绝对路径，不能建会话", sessionCreated: "已建会话", creating: "创建中", firstMessage: "初始消息", sendNow: "建会话并发送", sent: "已发出", sendFailed: "会话已建，首条消息没发出去",
     orphan: "会话已建，但没写进名册",
     fillPrompt: (title, dir, member) =>
       "针对任务「" + title + "」，给「" + member + "」所在的 worktree 补充辅助会话。先读 " + dir + "。" +
@@ -193,6 +204,13 @@ const DICT = {
       "4. 回报：一行说清改了哪些文件、归档了多少行、HEAD 现在的三句话；需要我拍板的单独列。\n\n" +
       "凭据只写位置不写值；不要动业务代码，不要提交、推送、合并。",
     patrol: "让协调巡检",
+    foldAll: "一键收起",
+    foldOpen: "一键展开",
+    phase_active: "进行中",
+    phase_done: "已完成",
+    phase_dropped: "已废弃",
+    phaseEmpty: "这个页签里还没有任务",
+    phaseMoved: "已归到这个页签",
     patrolPrompt: (title, dir) =>
       "现在按信箱调度跑一轮巡检任务「" + title + "」。先读 C:\\Users\\HUAWEI\\.task-hub\\tasks.json 和 " + dir + "，再读 HEAD.md / SUMMARY.md / RUNBOOK.md / DECISIONS.md，以及本轮有变化的 progress 的最后三段。对每个成员分在跑 / 可推进 / 等你定 / 已完成；只给可推进的发一条四段式消息（新信息 / 一个可验收动作 / 停止条件 / 写回路径，带【回话】和 returnResult）；有出处的结论写进 SUMMARY.md；命中硬边界（生产改动、删数据、合并 master 或 release、对外发消息）才问我，口径与实现选择按记录自己定并写明依据。顺手把散落在目录里的成品移进 deliverables/。成员一律报「名称 + 完整 session id」。",
     summarize: "让协调总结", summaryQueued: "已切到协调会话，提示词在它的输入框里",
@@ -202,6 +220,7 @@ const DICT = {
       "整理任务「" + title + "」下所有会话的名字。先读 tasks.json 和 " + dir + "。对每个成员，把 alias 设成「项目简称 - 现在在做什么」：项目简称取它所在 worktree 或目录名（例如 微服务、收银后端、goframe、cashier、H5），具体任务从最新的 progress 文件里看，不要照抄标题开头那句问候。有把握时用 session_rename 把会话本体也改成同样的名字；证据不足的跳过并在回报里列出来。改完写回 tasks.json，并把每处改动以「旧名 → 新名（依据）」列给我。",
     coord: "协调", coordGroup: "协调所在", coordShort: "协",
     setCoord: "标识协调会话", clearCoord: "取消协调",
+    execCoord: "执行目录里的会话不能当协调",
     compose: "放入聊天框", composed: "已放入聊天框，确认后自己发送",
     remove: "移除", open: "打开这个会话", gone: "会话不存在",
     save: "保存", cancel: "取消", title: "任务名", goal: "做什么", accept: "验收是什么",
@@ -220,9 +239,10 @@ const S = {
   selected: null, query: "", sort: "manual", me: null, meTitle: "",
   live: new Map(), busy: new Set(), service: new Map(), subscribed: new Set(), since: new Map(), stateNodes: [], groupNodes: [], expanded: new Set(), openMenu: null, headMenu: false, renaming: null, lastKey: "", ticker: 0, loc: "en", auto: 0, mounted: false,
   formMode: "create", formId: null, pickQ: "", pickRows: [], pickProjects: 0,
-  newFor: null, newTitle: "", newRole: "helper", newBusy: false, newCreated: "", saveBusy: false, coordBusy: false, filesOpen: false,
+  newFor: null, newTitle: "", newText: "", newDir: "", newRole: "helper", newBusy: false, newCreated: "", saveBusy: false, coordBusy: false, filesOpen: false,
   schedules: new Map(), scheduleFor: null, scheduleForm: null,
-  deleting: null, deleteTimer: 0, dragId: null, dragTaskId: null
+  deleting: null, deleteTimer: 0, dragId: null, dragTaskId: null,
+  labels: {}, phase: "active"
 }
 
 const t = (key) => (DICT[S.loc] && DICT[S.loc][key]) || DICT.en[key] || key
@@ -236,9 +256,38 @@ function fmtElapsed(ms) {
 }
 
 /* 运行中的会话按秒跳动：宿主只给 activity，不给起点，所以从面板第一次看到 running 开始计时。 */
+function refreshBadge() {
+  let waiting = 0
+  for (const id of S.ids) {
+    const task = S.tasks.get(id)
+    if (task) waiting += taskStatus(task).waiting
+  }
+  if (typeof host.setBadge === "function") host.setBadge(waiting || null).catch(() => {})
+}
+
 function tickStates() {
   for (const item of S.stateNodes) renderState(item.el, item.member)
   for (const item of S.groupNodes) paintGroupState(item.el, item.list)
+  paintTaskDots()
+}
+
+/* 任务列表的圆点不在会话状态节点里，每秒单独刷，避免整列重建。 */
+function paintTaskDots() {
+  const box = el("list")
+  if (!box) return
+  for (const item of box.querySelectorAll(".item[data-task]")) {
+    const task = S.tasks.get(item.dataset.task)
+    const dot = item.querySelector(".dot")
+    if (!task || !dot) continue
+    const status = taskStatus(task)
+    dot.className = "dot " + status.kind
+    dot.title =
+      status.kind === "wait"
+        ? t("statusWaiting") + " " + status.waiting
+        : status.kind === "run"
+          ? t("statusRunning") + " " + status.running
+          : t("idle")
+  }
 }
 
 /* ---------------- data files ---------------- */
@@ -255,6 +304,17 @@ async function readJson(path, fallback) {
 
 async function writeJson(path, value) {
   await host.writeFile(path, JSON.stringify(value, null, 2) + "\n")
+}
+
+async function readRepoLabels() {
+  const value = await readJson(FILE_REPOS, { repos: [] })
+  const map = {}
+  for (const repo of value.repos || []) {
+    if (!repo || !repo.label) continue
+    if (repo.alias) map[String(repo.alias)] = String(repo.label)
+    if (repo.path) map[normPath(repo.path)] = String(repo.label)
+  }
+  return map
 }
 
 async function readSettings() {
@@ -392,6 +452,34 @@ function mergeSessions(sessions, projectDirectory) {
 }
 
 let repaintTimer = 0
+let liveCache = { at: 0, key: "", map: null, timing: null }
+const LIVE_CACHE_MS = 10000
+
+function watchedDirs() {
+  const dirs = []
+  const add = (value) => {
+    const dir = normPath(value)
+    if (dir && !dirs.includes(dir)) dirs.push(dir)
+  }
+  for (const task of S.tasks.values()) {
+    add(task.progressDir)
+    for (const member of task.members || []) add(member.directory)
+    for (const repo of (task.board && task.board.repos) || []) {
+      add(repo.root)
+      if (repo.baseline) add(repo.baseline.path)
+      for (const slot of repo.longLived || []) add(slot.path)
+      for (const row of repo.parallels || []) add(row.path)
+    }
+  }
+  return dirs
+}
+
+function projectWatched(project, dirs) {
+  const dir = normPath(project.directory || project.path || "")
+  if (!dir) return false
+  return dirs.some((item) => item === dir || item.startsWith(dir + "/") || dir.startsWith(item + "/"))
+}
+
 function scheduleRepaint() {
   if (repaintTimer) return
   repaintTimer = setTimeout(() => {
@@ -403,7 +491,9 @@ function scheduleRepaint() {
 async function subscribeLive() {
   const snapshot = await host.listProjects().catch(() => null)
   const projects = snapshot && Array.isArray(snapshot.projects) ? snapshot.projects : []
+  const dirs = watchedDirs()
   for (const project of projects) {
+    if (!projectWatched(project, dirs)) continue
     if (S.subscribed.has(project.id)) continue
     S.subscribed.add(project.id)
     try {
@@ -418,14 +508,38 @@ async function subscribeLive() {
   }
 }
 
-async function collectLive() {
+async function panelTiming(line) {
+  const path = "~/.task-hub/panel-timing.log"
+  try {
+    const prev = await host.readFile(path).catch(() => ({ content: "" }))
+    const kept = String((prev && prev.content) || "").split(/\r?\n/).filter(Boolean).slice(-240)
+    kept.push(new Date().toISOString() + " " + line)
+    await host.writeFile(path, kept.join("\n") + "\n")
+  } catch {}
+}
+
+async function collectLive(force) {
+  const key = watchedDirs().join("|")
+  if (!force && liveCache.map && liveCache.key === key && Date.now() - liveCache.at < LIVE_CACHE_MS) {
+    return { map: liveCache.map, timing: Object.assign({}, liveCache.timing, { cached: 1 }) }
+  }
+  const started = performance.now()
   const map = new Map()
   const snapshot = await host.listProjects().catch(() => null)
-  const projects = snapshot && Array.isArray(snapshot.projects) ? snapshot.projects : []
+  const all = snapshot && Array.isArray(snapshot.projects) ? snapshot.projects : []
+  const dirs = watchedDirs()
+  const projects = all.filter((project) => projectWatched(project, dirs))
+  const listedAt = performance.now()
+  let sessions = 0
+  const slow = []
   for (const project of projects) {
+    const t0 = performance.now()
     const sessionsSnapshot = await host.listSessions(project.id).catch(() => null)
-    const sessions = sessionsSnapshot && Array.isArray(sessionsSnapshot.sessions) ? sessionsSnapshot.sessions : []
-    for (const session of sessions) {
+    const ms = Math.round(performance.now() - t0)
+    const list = sessionsSnapshot && Array.isArray(sessionsSnapshot.sessions) ? sessionsSnapshot.sessions : []
+    sessions += list.length
+    if (ms >= 80) slow.push((project.name || project.directory || project.id) + " " + ms + "ms/" + list.length)
+    for (const session of list) {
       map.set(session.id, {
         activity: session.activity || "unknown",
         title: session.title || "",
@@ -434,7 +548,18 @@ async function collectLive() {
       })
     }
   }
-  return map
+  slow.sort((a, b) => Number(b.split(" ")[1]) - Number(a.split(" ")[1]))
+  const timing = {
+    projects: all.length,
+    asked: projects.length,
+    sessions,
+    listProjectsMs: Math.round(listedAt - started),
+    listSessionsMs: Math.round(performance.now() - listedAt),
+    slow: slow.slice(0, 5),
+    cached: 0
+  }
+  liveCache = { at: Date.now(), key, map, timing }
+  return { map, timing }
 }
 
 function liveOf(member) {
@@ -442,21 +567,38 @@ function liveOf(member) {
 }
 
 function stateOf(member) {
+  // 2026-11-05：宿主报「等提问/等授权」时优先显示等待，不能被服务端的 running 盖掉。
+  const live = liveOf(member)
+  if (live && (live.activity === "waiting-permission" || live.activity === "waiting-question")) return "waiting"
+  // 宿主的 activity 是实时的。状态服务只认 busy/idle，思考阶段 busy 还没写上，
+  // 会把正在思考的会话报成空闲，所以不能让它盖掉宿主已经给出的 running。
+  if (live && (live.activity === "running" || live.activity === "retrying")) return "running"
   const svc = S.service.get(member.sessionId)
   if (svc) {
     if (svc.running) return "running"
     if (svc.lastMs) return "done"
     return "idle"
   }
-  const live = liveOf(member)
   if (!live) return "unknown"
-  if (live.activity === "running" || live.activity === "retrying") return "running"
-  if (live.activity === "waiting-permission" || live.activity === "waiting-question") return "waiting"
   if (live.activity === "idle") {
     if (S.busy.has(member.sessionId)) return "running-child"
     return "idle"
   }
   return "unknown"
+}
+
+// 一件任务的状态：有人等回答 > 有人在跑 > 空闲。
+function taskStatus(task) {
+  let waiting = 0
+  let running = 0
+  for (const member of task.members || []) {
+    const live = liveOf(member)
+    if (live && (live.activity === "waiting-permission" || live.activity === "waiting-question")) waiting++
+    else if (stateOf(member) === "running" || stateOf(member) === "running-child") running++
+  }
+  if (waiting) return { kind: "wait", waiting, running }
+  if (running) return { kind: "run", waiting, running }
+  return { kind: "idle", waiting, running }
 }
 
 function lastMsOf(member) {
@@ -557,6 +699,30 @@ async function createSessionRequest(directory, title, agent) {
   }
 }
 
+/* 首条消息不走 query：宿主代理会丢 POST body，长文本也会撞上 query 长度。
+   面板能写 ~/.task-hub，先落文件，再让服务读文件送进会话。 */
+async function sendFirstMessage(sessionId, text) {
+  const body = String(text || "").trim()
+  if (!body) return { ok: true, skipped: true }
+  if (typeof host.writeFile !== "function" || typeof host.serviceRequest !== "function") return { ok: false, error: "no-service-api" }
+  const name = "seed-" + sessionId.slice(4, 16) + ".txt"
+  try {
+    await host.writeFile("~/.task-hub/" + name, body.slice(0, 8000))
+    const res = await withTimeout(
+      host.serviceRequest({ method: "GET", path: "/sendFile", query: { sessionId, name } }),
+      30000,
+      "sendFile"
+    )
+    const raw = typeof res?.body === "string" ? res.body : ""
+    const data = raw ? JSON.parse(raw) : null
+    if (res && res.status && res.status >= 400) return { ok: false, error: (data && data.error) || String(res.status) }
+    if (data && data.ok) return { ok: true }
+    return { ok: false, error: (data && data.error) || "empty" }
+  } catch (error) {
+    return { ok: false, error: String((error && error.code) || (error && error.message) || "ERR") }
+  }
+}
+
 async function loadSchedules() {
   if (typeof host.serviceRequest !== "function") return
   try {
@@ -573,6 +739,10 @@ async function saveSchedule(task) {
   if (!form) return
   if (!task.coordinator) {
     toast(t("noCoord"), "error")
+    return
+  }
+  if (executionIds(task).has(task.coordinator)) {
+    toast(t("execCoord"), "error")
     return
   }
   try {
@@ -632,22 +802,33 @@ async function serviceStates(ids, force) {
 }
 
 async function loadAll(force = false) {
+  const started = performance.now()
   try {
     S.settings = await readSettings()
+    S.labels = await readRepoLabels()
     const list = await readTasks()
+    const jsonMs = Math.round(performance.now() - started)
     S.ids = list.map((task) => task.id)
     S.tasks = new Map(list.map((task) => [task.id, task]))
-    S.live = await collectLive()
+    const hadLive = S.live && S.live.size > 0
+    const key = JSON.stringify({ labels: S.labels, tasks: list.map((task) => [task.id, task.title, task.status || "active", task.progressDir, task.coordinator, task.board || null, (task.members || []).map((m) => [m.sessionId, m.title])]) })
+    if (key !== S.lastKey) {
+      S.lastKey = key
+      render()
+    }
+    const live = await collectLive(force)
+    S.live = live.map
     void loadSchedules()
     recomputeBusy()
     void subscribeLive()
 
-    // 宿主对 worktree 目录可能给 unknown；本地服务直读会话状态作为权威值。
     const wanted = new Set()
     for (const task of S.tasks.values()) {
       for (const member of task.members || []) wanted.add(member.sessionId)
     }
+    const svcStarted = performance.now()
     const svc = await serviceStates([...wanted], force)
+    const svcMs = Math.round(performance.now() - svcStarted)
     const over = svc.data ? svc.data.states : null
     S.service = new Map()
     if (over) {
@@ -658,21 +839,34 @@ async function loadAll(force = false) {
           since: Number(state && state.since) || 0
         })
         const current = S.live.get(id) || { activity: "unknown", title: "", directory: "", parentId: null }
-        current.activity = state && state.running ? "running" : "idle"
+        if (!(current.activity === "running" || current.activity === "retrying" || current.activity === "waiting-permission" || current.activity === "waiting-question")) {
+          current.activity = state && state.running ? "running" : "idle"
+        }
         S.live.set(id, current)
       }
     }
-    el("status").textContent = svc.error ? "svc:" + svc.error : ""
-    // 轮询只更新状态点，任务结构没变就不重建 DOM，避免整块重绘带来的卡顿。
-    const key = JSON.stringify(list.map((task) => [task.id, task.title, task.progressDir, task.coordinator, (task.members || []).map((m) => [m.sessionId, m.title])]))
-    if (key !== S.lastKey) {
-      S.lastKey = key
-      render()
-    } else {
-      tickStates()
-    }
+    el("status").textContent = (svc.error ? "svc:" + svc.error + " · " : "") +
+      "加载 " + Math.round(performance.now() - started) + "ms"
+    const timing = live.timing
+    void panelTiming(
+      "load force=" + (force ? 1 : 0) +
+      " json=" + jsonMs +
+      " projects=" + timing.projects +
+      " asked=" + timing.asked +
+      " cached=" + (timing.cached || 0) +
+      " sessions=" + timing.sessions +
+      " listProjects=" + timing.listProjectsMs +
+      " listSessions=" + timing.listSessionsMs +
+      " service=" + svcMs +
+      " members=" + wanted.size +
+      " total=" + Math.round(performance.now() - started) +
+      (timing.slow.length ? " slow=" + timing.slow.join(",") : "")
+    )
+    tickStates()
+    if (!hadLive) void renderDetail()
   } catch (error) {
     el("status").textContent = (error && error.code) || "ERR"
+    void panelTiming("load error " + String((error && error.message) || error))
   }
 }
 
@@ -698,9 +892,54 @@ async function removeTask(id) {
   }
 }
 
+function taskPhase(task) {
+  return task && (task.status === "done" || task.status === "dropped") ? task.status : "active"
+}
+
+function phaseCount(phase) {
+  return S.ids.map((id) => S.tasks.get(id)).filter((task) => task && taskPhase(task) === phase).length
+}
+
+async function setPhase(task, phase) {
+  if (taskPhase(task) === phase) return
+  task.status = phase
+  await persist(task)
+  toast(t("phase_" + phase), "success")
+  render()
+}
+
+function phaseBar(task) {
+  const row = document.createElement("div")
+  row.className = "phasebar"
+  for (const phase of ["active", "done", "dropped"]) {
+    row.appendChild(button(t("phase_" + phase), taskPhase(task) === phase ? "primary" : "", () => void setPhase(task, phase)))
+  }
+  return row
+}
+
+function renderTabs() {
+  const box = el("tabs")
+  if (!box) return
+  box.replaceChildren()
+  for (const phase of ["active", "done", "dropped"]) {
+    const tab = document.createElement("button")
+    tab.type = "button"
+    tab.className = "tab" + ((S.phase || "active") === phase ? " on" : "")
+    tab.textContent = t("phase_" + phase) + " " + phaseCount(phase)
+    tab.onclick = () => {
+      S.phase = phase
+      const list = visibleTasks()
+      if (!list.some((task) => task.id === S.selected)) S.selected = list[0] ? list[0].id : null
+      render()
+    }
+    box.appendChild(tab)
+  }
+}
+
 function visibleTasks() {
   const text = S.query.trim().toLowerCase()
   let list = S.ids.map((id) => S.tasks.get(id)).filter(Boolean)
+  list = list.filter((task) => taskPhase(task) === (S.phase || "active"))
   if (text) list = list.filter((task) => String(task.title || "").toLowerCase().includes(text))
   if (S.sort === "name") list.sort((a, b) => String(a.title || "").localeCompare(String(b.title || "")))
   if (S.sort === "members") list.sort((a, b) => (b.members || []).length - (a.members || []).length)
@@ -712,7 +951,7 @@ function currentTask() {
   return list.find((task) => task.id === S.selected) || list[0] || null
 }
 
-async function gotoSession(sessionId) {
+async function gotoSession(sessionId, options = {}) {
   try {
     await host.openSession(sessionId)
   } catch (error) {
@@ -735,8 +974,9 @@ async function gotoSession(sessionId) {
     if (!warmed) throw error
     await host.openSession(sessionId)
   }
-  // 目标会话可能从没开过这块面板：切过去后立刻拉一次，再补一次，防止第一次被切换过程吞掉。
-  if (typeof host.openSurface === "function") {
+  // 巡检/收拢这类动作要在跳过去之后继续往聊天框放提示，所以默认把看板重开；
+  // 点任务标题的跳转传 keepPanel: false，真正落到协调会话所在项目。
+  if (options.keepPanel !== false && typeof host.openSurface === "function") {
     const open = () => host.openSurface("plugin:task-hub").catch(() => {})
     void open()
     setTimeout(() => void open(), 500)
@@ -782,13 +1022,14 @@ function renderList() {
   if (!list.length) {
     const empty = document.createElement("div")
     empty.className = "empty"
-    empty.textContent = S.query ? t("noMatch") : t("none")
+    empty.textContent = S.query ? t("noMatch") : t("phaseEmpty")
     box.appendChild(empty)
     return
   }
   for (const task of list) {
     const item = document.createElement("div")
     item.className = "item" + (task === currentTask() ? " on" : "")
+    item.dataset.task = task.id
     item.setAttribute("role", "button")
     item.tabIndex = 0
     item.addEventListener("keydown", (event) => {
@@ -797,17 +1038,39 @@ function renderList() {
         item.click()
       }
     })
-    if (isMine(task)) {
-      const dot = document.createElement("span")
-      dot.className = "dot"
-      item.appendChild(dot)
-    }
+    if (isMine(task)) item.classList.add("mine")
+    const status = taskStatus(task)
+    const dot = document.createElement("span")
+    dot.className = "dot " + status.kind
+    dot.title =
+      status.kind === "wait"
+        ? t("statusWaiting") + " " + status.waiting
+        : status.kind === "run"
+          ? t("statusRunning") + " " + status.running
+          : t("idle")
+    item.appendChild(dot)
     // 任务 id 固定显示在名称下方：一件任务在多个仓库、多个会话里出现时，靠它对齐。
     const col = document.createElement("span")
     col.className = "item-col"
     const name = document.createElement("span")
-    name.className = "item-name"
+    name.className = "item-name" + (task.coordinator ? " link" : "")
     name.textContent = task.title || task.id
+    if (task.coordinator) name.title = t("hintJump")
+    name.onclick = (event) => {
+      event.stopPropagation()
+      // 先切换任务，再跳协调会话；跳转后不重开看板，落到会话所在项目。
+      S.selected = task.id
+      S.deleting = null
+      S.newFor = null
+      render()
+      if (!task.coordinator) {
+        toast(t("noCoord"), "error")
+        return
+      }
+      void gotoSession(task.coordinator, { keepPanel: false }).catch((error) =>
+        toast(String((error && error.code) || "ERR"), "error")
+      )
+    }
     const idTag = document.createElement("span")
     idTag.className = "item-id"
     idTag.textContent = task.id
@@ -815,20 +1078,14 @@ function renderList() {
     const meta = document.createElement("span")
     meta.className = "item-meta"
     meta.textContent = String((task.members || []).length)
-    item.appendChild(col)
-    // 列表项上直接给「跳到协调」，不用先选中任务。
-    if (task.coordinator) {
-      const jump = document.createElement("button")
-      jump.type = "button"
-      jump.className = "btn tiny accent"
-      jump.textContent = t("coordShort")
-      jump.title = t("hintJump")
-      jump.onclick = (event) => {
-        event.stopPropagation()
-        void gotoSession(task.coordinator).catch((error) => toast(String((error && error.code) || "ERR"), "error"))
-      }
-      item.appendChild(jump)
+    if (status.kind === "wait") {
+      const waitTag = document.createElement("span")
+      waitTag.className = "tag wait"
+      waitTag.textContent = t("statusWaiting")
+      item.appendChild(waitTag)
     }
+    item.appendChild(col)
+    // 2026-11-05：跳协调会话改为点标题，列表项不再放「协」按钮。
     item.appendChild(meta)
     item.onclick = () => {
       S.selected = task.id
@@ -952,11 +1209,26 @@ function memberRow(task, member, index) {
 
   const sub = document.createElement("span")
   sub.className = "row-sub"
-  const parts = []
   const dir = live && live.directory ? live.directory.split(/[\\/]/).filter(Boolean).pop() : member.directory
-  if (dir) parts.push(dir)
-  parts.push(member.sessionId.slice(-6))
-  sub.textContent = parts.join(" \u00b7 ")
+  if (dir) {
+    sub.appendChild(document.createTextNode(dir))
+    sub.appendChild(document.createTextNode(" \u00b7 "))
+  }
+  const code = document.createElement("span")
+  code.className = "sid"
+  code.textContent = member.sessionId.slice(-6)
+  code.title = t("copyShort")
+  code.ondblclick = async (event) => {
+    event.stopPropagation()
+    event.preventDefault()
+    try {
+      await host.writeClipboard(member.sessionId)
+      toast(t("copyDone"), "success")
+    } catch (error) {
+      toast(String((error && error.code) || "ERR"), "error")
+    }
+  }
+  sub.appendChild(code)
   info.append(title, sub)
 
   const state = document.createElement("span")
@@ -1016,7 +1288,9 @@ function memberRow(task, member, index) {
         }
       }),
       button(t("remove"), "danger", () => void dropMember(task, member.sessionId)),
-      button(isCoord ? t("clearCoord") : t("setCoord"), "accent", () => void setCoordinator(task, isCoord ? null : member.sessionId)),
+      ...(executionIds(task).has(member.sessionId) && !isCoord ? [] : [
+        button(isCoord ? t("clearCoord") : t("setCoord"), "accent", () => void setCoordinator(task, isCoord ? null : member.sessionId))
+      ]),
       button(t("setMain"), roleNow === "main" ? "primary" : "", () => void setRole(task, member.sessionId, "main")),
       button(t("setHelper"), roleNow === "helper" ? "primary" : "", () => void setRole(task, member.sessionId, "helper")),
       button(t("fillHelpers"), "accent", async () => {
@@ -1129,6 +1403,14 @@ function newSessionEditor(task, key, list) {
   input.oninput = () => {
     S.newTitle = input.value
   }
+  const text = document.createElement("textarea")
+  text.className = "rename"
+  text.rows = 3
+  text.placeholder = t("firstMessage")
+  text.value = S.newText
+  text.oninput = () => {
+    S.newText = text.value
+  }
   const roleMain = button(t("roleMain"), S.newRole === "main" ? "primary" : "", () => {
     S.newRole = "main"
     void renderDetail()
@@ -1137,7 +1419,7 @@ function newSessionEditor(task, key, list) {
     S.newRole = "helper"
     void renderDetail()
   })
-  const create = button(S.newBusy ? t("creating") : t("newSession"), "primary", () => void submitNewSession(task, key, list))
+  const create = button(S.newBusy ? t("creating") : (String(S.newText || "").trim() ? t("sendNow") : t("newSession")), "primary", () => void submitNewSession(task, key, list))
   create.disabled = S.newBusy
   const cancel = button(t("cancel"), "", () => {
     if (S.newBusy) return
@@ -1145,14 +1427,14 @@ function newSessionEditor(task, key, list) {
     void renderDetail()
   })
   cancel.disabled = S.newBusy
-  box.append(input, roleMain, roleHelper, create, cancel)
+  box.append(input, text, roleMain, roleHelper, create, cancel)
   setTimeout(() => input.focus(), 0)
   return box
 }
 
 async function submitNewSession(task, key, list) {
   if (S.newBusy) return
-  const dir = groupDirectory(list)
+  const dir = S.newDir || groupDirectory(list)
   if (!dir) {
     toast(t("noDirectory"), "error")
     return
@@ -1160,6 +1442,7 @@ async function submitNewSession(task, key, list) {
   const taskId = task.id
   const role = S.newRole
   const title = String(S.newTitle || "").trim() || key + " - " + t("newSession")
+  const first = String(S.newText || "").trim()
   S.newBusy = true
   void renderDetail()
   const res = await createSessionRequest(dir, title, "")
@@ -1194,10 +1477,14 @@ async function submitNewSession(task, key, list) {
   if (stillOpen) {
     S.newFor = null
     S.newTitle = ""
+    S.newText = ""
+    S.newDir = ""
   }
   S.newCreated = ""
+  const sent = await sendFirstMessage(res.id, first)
   render()
-  toast(t("sessionCreated") + (stillOpen ? "" : " " + res.id), "success")
+  if (!sent.ok) toast(t("sendFailed") + " \u00b7 " + String(sent.error || ""), "error")
+  else toast(t("sessionCreated") + (first ? " \u00b7 " + t("sent") : "") + (stillOpen ? "" : " " + res.id), "success")
   if (stillOpen) await gotoSession(res.id)
 }
 
@@ -1265,6 +1552,8 @@ function groupHeader(task, key, list, hasCoord) {
     }
     S.newFor = key
     S.newTitle = ""
+    S.newText = ""
+    S.newDir = ""
     S.newRole = "helper"
     S.newBusy = false
     S.newCreated = ""
@@ -1274,6 +1563,390 @@ function groupHeader(task, key, list, hasCoord) {
 
   row.append(toggle, add)
   return row
+}
+
+function boardRepos(task) {
+  const board = task && task.board
+  return board && Array.isArray(board.repos) && board.repos.length ? board.repos : null
+}
+
+function normPath(value) {
+  return String(value || "").replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase()
+}
+
+function pathTail(value) {
+  const parts = normPath(value).split("/").filter(Boolean)
+  return parts.length ? parts[parts.length - 1] : ""
+}
+
+function memberDir(member) {
+  const live = liveOf(member)
+  return String((live && live.directory) || member.directory || "")
+}
+
+function treeOpen(key, openByDefault) {
+  if (!S.treeSeen) S.treeSeen = new Set()
+  if (!S.treeSeen.has(key)) {
+    S.treeSeen.add(key)
+    if (openByDefault) S.expanded.add(key)
+    else S.expanded.delete(key)
+  }
+  return S.expanded.has(key)
+}
+
+function treeToggle(key) {
+  if (S.expanded.has(key)) S.expanded.delete(key)
+  else S.expanded.add(key)
+  void renderDetail()
+}
+
+function treeButton(label, key, open, className, members) {
+  const btn = document.createElement("button")
+  btn.type = "button"
+  btn.className = "tree-fold" + (className ? " " + className : "")
+  const caret = document.createElement("span")
+  caret.className = "caret"
+  caret.textContent = open ? "\u25be" : "\u25b8"
+  const name = document.createElement("span")
+  name.className = "group-name"
+  name.textContent = label
+  btn.append(caret, name)
+  // 空目录不画：没人不是「完成」。有会话才按运行中 > 待回答 > 空闲上卷。
+  if (members && members.length) {
+    const state = document.createElement("span")
+    state.className = "state"
+    paintGroupState(state, members)
+    S.groupNodes.push({ el: state, list: members })
+    btn.appendChild(state)
+  }
+  btn.onclick = () => treeToggle(key)
+  return btn
+}
+
+function showBranchTip(text, anchor) {
+  let tip = document.getElementById("branch-tip")
+  if (!tip) {
+    tip = document.createElement("div")
+    tip.id = "branch-tip"
+    document.body.appendChild(tip)
+  }
+  tip.textContent = text
+  tip.hidden = false
+  const rect = anchor.getBoundingClientRect()
+  const width = 260
+  tip.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)) + "px"
+  tip.style.top = (rect.bottom + 6) + "px"
+}
+
+function hideBranchTip() {
+  const tip = document.getElementById("branch-tip")
+  if (tip) tip.hidden = true
+}
+
+function branchMark(text) {
+  const mark = document.createElement("span")
+  mark.className = "qmark"
+  mark.textContent = "?"
+  mark.title = text
+  mark.onmouseenter = () => showBranchTip(text, mark)
+  mark.onmouseleave = hideBranchTip
+  mark.onclick = (event) => {
+    event.stopPropagation()
+    event.preventDefault()
+  }
+  return mark
+}
+
+function repoTitle(repo) {
+  const labels = S.labels || {}
+  return labels[repo.key] || labels[normPath(repo.root)] || repo.name || repo.key || ""
+}
+
+function parallelPurpose(repo, dir) {
+  const hit = (repo.parallels || []).find((row) => normPath(row.path) === normPath(dir))
+  return (hit && hit.purpose) || "从基线拉出，做完合回基线。"
+}
+
+function treeSlot(task, title, kind, members, note, foldKey, purpose, directory) {
+  const slot = document.createElement("div")
+  slot.className = "tree-slot"
+  const open = treeOpen(foldKey, true)
+  const head = document.createElement("div")
+  head.className = "tree-line"
+  const fold = document.createElement("button")
+  fold.type = "button"
+  fold.className = "tree-fold sub"
+  const caret = document.createElement("span")
+  caret.className = "caret"
+  caret.textContent = open ? "\u25be" : "\u25b8"
+  const name = document.createElement("span")
+  name.className = "group-name"
+  name.textContent = title
+  fold.append(caret, name)
+  if (purpose) fold.appendChild(branchMark(purpose))
+  if (kind) {
+    const tag = document.createElement("span")
+    tag.className = "tree-kind"
+    tag.textContent = kind
+    fold.appendChild(tag)
+  }
+  fold.onclick = () => treeToggle(foldKey)
+  head.appendChild(fold)
+  const dir = absoluteDir(directory || "")
+  if (dir) head.appendChild(slotAdd(task, foldKey, title, dir))
+  slot.appendChild(head)
+  if (S.newFor === foldKey) slot.appendChild(newSessionEditor(task, title, members))
+  if (!open) return slot
+  if (note) {
+    const line = document.createElement("div")
+    line.className = "tree-note"
+    line.textContent = note
+    slot.appendChild(line)
+  }
+  if (!members.length) {
+    const empty = document.createElement("div")
+    empty.className = "tree-empty"
+    empty.textContent = "还没开"
+    slot.appendChild(empty)
+    return slot
+  }
+  const grid = document.createElement("div")
+  grid.className = "members"
+  for (const member of members) grid.appendChild(memberRow(task, member))
+  slot.appendChild(grid)
+  return slot
+}
+
+function slotAdd(task, key, title, directory) {
+  const add = document.createElement("button")
+  add.type = "button"
+  add.className = "btn accent group-add"
+  add.textContent = "+"
+  add.title = t("newSession") + "\u00b7 " + directory
+  add.onclick = (event) => {
+    event.stopPropagation()
+    if (S.newBusy) return
+    if (S.newCreated) {
+      toast(t("orphan"), "error")
+      return
+    }
+    S.newFor = key
+    S.newTitle = title
+    S.newText = ""
+    S.newDir = directory
+    S.newRole = "helper"
+    S.newBusy = false
+    S.newCreated = ""
+    S.expanded.add(key)
+    if (!S.treeSeen) S.treeSeen = new Set()
+    S.treeSeen.add(key)
+    void renderDetail()
+  }
+  return add
+}
+
+function arrangeBoard(task) {
+  const repos = boardRepos(task)
+  const slots = []
+  repos.forEach((repo) => {
+    ;(repo.longLived || []).forEach((slot, index) => {
+      slots.push({ repo: repo.key, kind: "long", index, path: slot.path || "" })
+    })
+    if (repo.baseline) slots.push({ repo: repo.key, kind: "base", index: 0, path: repo.baseline.path || "" })
+  })
+  const tails = {}
+  slots.forEach((slot) => {
+    const tail = pathTail(slot.path)
+    if (tail) tails[tail] = (tails[tail] || 0) + 1
+  })
+  const used = new Set()
+  const top = []
+  const placed = {}
+  const parallel = {}
+  function slotKey(slot) { return slot.repo + ":" + slot.kind + ":" + slot.index }
+  function put(slot, member) {
+    const key = slotKey(slot)
+    if (!placed[key]) placed[key] = []
+    placed[key].push(member)
+    used.add(member)
+  }
+  for (const member of task.members || []) {
+    const dir = normPath(memberDir(member))
+    const onTask = dir.endsWith("/" + String(task.id || "").toLowerCase()) || pathTail(dir) === String(task.id || "").toLowerCase()
+    if (member.sessionId === task.coordinator || onTask) {
+      top.push(member)
+      used.add(member)
+    }
+  }
+  for (const member of task.members || []) {
+    if (used.has(member)) continue
+    const dir = normPath(memberDir(member))
+    if (!dir.includes("/")) continue
+    const hit = slots.find((slot) => normPath(slot.path) && normPath(slot.path) === dir)
+    if (hit) put(hit, member)
+  }
+  for (const member of task.members || []) {
+    if (used.has(member)) continue
+    const dir = normPath(memberDir(member))
+    if (!dir || dir.includes("/") || tails[dir] !== 1) continue
+    const hit = slots.find((slot) => pathTail(slot.path) === dir)
+    if (hit) put(hit, member)
+  }
+  for (const member of task.members || []) {
+    if (used.has(member)) continue
+    const dir = normPath(memberDir(member))
+    if (!dir.includes("/")) continue
+    const repo = repos.find((item) => {
+      const root = normPath(item.root)
+      return root && (dir === root || dir.startsWith(root + "/") || dir.startsWith(root + "--worktrees/"))
+    })
+    if (!repo) continue
+    if (!parallel[repo.key]) parallel[repo.key] = new Map()
+    if (!parallel[repo.key].has(dir)) parallel[repo.key].set(dir, [])
+    parallel[repo.key].get(dir).push(member)
+    used.add(member)
+  }
+  return {
+    top,
+    placed,
+    parallel,
+    rest: (task.members || []).filter((member) => !used.has(member))
+  }
+}
+
+function executionIds(task) {
+  const ids = new Set()
+  if (!boardRepos(task)) return ids
+  const laid = arrangeBoard(task)
+  for (const repo of boardRepos(task)) {
+    for (const member of laid.placed[repo.key + ":base:0"] || []) ids.add(member.sessionId)
+    const extras = laid.parallel[repo.key]
+    if (!extras) continue
+    for (const list of extras.values()) {
+      for (const member of list) ids.add(member.sessionId)
+    }
+  }
+  return ids
+}
+
+function executionFoldKeys(task) {
+  const keys = []
+  const repos = boardRepos(task)
+  if (!repos) return keys
+  const laid = arrangeBoard(task)
+  for (const repo of repos) {
+    keys.push("tree:" + task.id + ":exec:" + repo.key)
+    keys.push("tree:" + task.id + ":slot:" + repo.key + ":base")
+    const extras = laid.parallel[repo.key]
+    if (extras) {
+      for (const dir of extras.keys()) keys.push("tree:" + task.id + ":slot:" + repo.key + ":par:" + dir)
+    }
+  }
+  if (laid.rest.length) keys.push("tree:" + task.id + ":rest")
+  return keys
+}
+
+function toggleExecution(task) {
+  const keys = executionFoldKeys(task)
+  if (!S.treeSeen) S.treeSeen = new Set()
+  const open = keys.some((key) => S.expanded.has(key))
+  for (const key of keys) {
+    S.treeSeen.add(key)
+    if (open) S.expanded.delete(key)
+    else S.expanded.add(key)
+  }
+  void renderDetail()
+}
+
+function folderMembers(laid, repo, which) {
+  const list = []
+  if (which !== "exec") {
+    ;(repo.longLived || []).forEach((_, index) => {
+      for (const member of laid.placed[repo.key + ":long:" + index] || []) list.push(member)
+    })
+  }
+  if (which !== "long") {
+    for (const member of laid.placed[repo.key + ":base:0"] || []) list.push(member)
+    const extras = laid.parallel[repo.key]
+    if (extras) {
+      for (const members of extras.values()) {
+        for (const member of members) list.push(member)
+      }
+    }
+  }
+  return list
+}
+
+function renderBoard(task, box) {
+  const repos = boardRepos(task)
+  const laid = arrangeBoard(task)
+  if (laid.top.length) {
+    const key = "tree:" + task.id + ":coord"
+    const open = treeOpen(key, true)
+    const line = document.createElement("div")
+    line.className = "tree-line"
+    line.appendChild(treeButton("协调", key, open, ""))
+    line.appendChild(slotAdd(task, key, "协调", absoluteDir(task.progressDir)))
+    box.appendChild(line)
+    if (S.newFor === key) box.appendChild(newSessionEditor(task, "协调", laid.top))
+    if (open) {
+      const grid = document.createElement("div")
+      grid.className = "members"
+      for (const member of laid.top) grid.appendChild(memberRow(task, member))
+      box.appendChild(grid)
+    }
+  }
+  for (const repo of repos) {
+    const repoKey = "tree:" + task.id + ":repo:" + repo.key
+    const repoOpen = treeOpen(repoKey, true)
+    box.appendChild(treeButton(repoTitle(repo), repoKey, repoOpen, "", folderMembers(laid, repo, "repo")))
+    if (!repoOpen) continue
+    const body = document.createElement("div")
+    body.className = "tree-body"
+    const longKey = "tree:" + task.id + ":long:" + repo.key
+    const longOpen = treeOpen(longKey, false)
+    body.appendChild(treeButton("长期", longKey, longOpen, "sub long", folderMembers(laid, repo, "long")))
+    if (longOpen) {
+      const longBody = document.createElement("div")
+      longBody.className = "tree-body"
+      ;(repo.longLived || []).forEach((slot, index) => {
+        const names = { main: "主检出", test: "test", develop: "develop", release: "release" }
+        const title = (names[slot.kind] || slot.kind || "") + " " + (slot.branch || "")
+        const members = laid.placed[repo.key + ":long:" + index] || []
+        longBody.appendChild(treeSlot(task, title.trim(), "", members, slot.note || "", "tree:" + task.id + ":slot:" + repo.key + ":long:" + index, slot.purpose || slot.note || "长期目录。这个位置不随这件任务删除。", slot.path))
+      })
+      body.appendChild(longBody)
+    }
+    const execKey = "tree:" + task.id + ":exec:" + repo.key
+    const execOpen = treeOpen(execKey, true)
+    body.appendChild(treeButton("执行", execKey, execOpen, "sub", folderMembers(laid, repo, "exec")))
+    if (execOpen) {
+      const execBody = document.createElement("div")
+      execBody.className = "tree-body"
+      const baseline = repo.baseline || { branch: "未指定", path: "", note: "这件任务还没有指定基线" }
+      const baseMembers = laid.placed[repo.key + ":base:0"] || []
+      execBody.appendChild(treeSlot(task, baseline.branch || "未指定", "基线", baseMembers, baseline.note || "", "tree:" + task.id + ":slot:" + repo.key + ":base", baseline.purpose || "这件任务的基线。新分支从这里拉，做完合回这里。", baseline.path))
+      const extras = laid.parallel[repo.key]
+      if (extras) {
+        for (const [dir, members] of extras) {
+          execBody.appendChild(treeSlot(task, pathTail(dir), "并行", members, "从基线拉出，做完合回基线", "tree:" + task.id + ":slot:" + repo.key + ":par:" + dir, parallelPurpose(repo, dir), dir))
+        }
+      }
+      body.appendChild(execBody)
+    }
+    box.appendChild(body)
+  }
+  if (laid.rest.length) {
+    const key = "tree:" + task.id + ":rest"
+    const open = treeOpen(key, false)
+    box.appendChild(treeButton("未归入目录 " + laid.rest.length, key, open, ""))
+    if (open) {
+      const grid = document.createElement("div")
+      grid.className = "members"
+      for (const member of laid.rest) grid.appendChild(memberRow(task, member))
+      box.appendChild(grid)
+    }
+  }
 }
 
 async function renderDetail() {
@@ -1347,25 +2020,13 @@ async function renderDetail() {
   )
   head.appendChild(headActions)
   box.appendChild(head)
+  box.appendChild(phaseBar(task))
 
   if (S.headMenu) {
     const menu = document.createElement("div")
     menu.className = "headmenu"
     menu.append(
       button(t("settle"), "accent", () => void runSettle(task), t("hintSettle")),
-      button(t("patrol"), "accent", async () => {
-        if (!task.coordinator) {
-          toast(t("noCoord"), "error")
-          return
-        }
-        try {
-          await gotoSession(task.coordinator)
-          await host.compose({ text: t("patrolPrompt")(task.title || task.id, task.progressDir || ""), mode: "replace" })
-          toast(t("summaryQueued"), "success")
-        } catch (error) {
-          toast(String((error && error.code) || "ERR"), "error")
-        }
-      }, t("hintPatrol")),
       button(t("summarize"), "accent", async () => {
         if (!task.coordinator) {
           toast(t("noCoord"), "error")
@@ -1392,17 +2053,6 @@ async function renderDetail() {
           toast(String((error && error.code) || "ERR"), "error")
         }
       }, t("hintTidyTitles")),
-      button(t("schedule"), "accent", () => {
-        S.scheduleFor = task.id
-        const current = S.schedules.get(task.id)
-        S.scheduleForm = {
-          enabled: current ? current.enabled : true,
-          intervalMinutes: current ? current.intervalMinutes : 30,
-          maxRuns: current ? current.maxRuns : 8,
-          until: current ? current.until : defaultUntil()
-        }
-        void renderDetail()
-      }, t("hintSchedule")),
       button(t("edit"), "", () => openForm("edit", task), t("hintEdit")),
       del
     )
@@ -1437,35 +2087,6 @@ async function renderDetail() {
   )
   box.appendChild(prow)
 
-  // 定时巡检：一行状态，点 ⋯ → 定时巡检 配置。
-  const sched = S.schedules.get(task.id)
-  const srow = document.createElement("div")
-  srow.className = "progress"
-  const slabel = document.createElement("span")
-  slabel.className = "progress-label"
-  slabel.textContent = t("schedule")
-  srow.appendChild(slabel)
-  const stext = document.createElement("span")
-  stext.className = "progress-path"
-  if (!sched) {
-    stext.textContent = t("scheduleOff")
-  } else {
-    const bits = [sched.enabled ? t("scheduleOn") : t("scheduleOff")]
-    bits.push(t("interval") + " " + sched.intervalMinutes)
-    bits.push(t("runsOf")(sched.runs, sched.maxRuns))
-    if (sched.enabled && sched.nextRunAt) {
-      bits.push(t("nextRun")(new Date(sched.nextRunAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })))
-    }
-    if (!sched.enabled && sched.stopReason) {
-      bits.push(t("scheduleStopped") + " (" + sched.stopReason + ")")
-    }
-    stext.textContent = bits.join(" \u00b7 ")
-  }
-  srow.appendChild(stext)
-  box.appendChild(srow)
-
-  if (S.scheduleFor === task.id && S.scheduleForm) box.appendChild(scheduleEditor(task))
-
   const filesBox = document.createElement("div")
   filesBox.className = "files"
   box.appendChild(filesBox)
@@ -1484,6 +2105,10 @@ async function renderDetail() {
     warn.className = "warn"
     warn.textContent = t("noPeers")
     box.appendChild(warn)
+  }
+  if (boardRepos(task)) {
+    renderBoard(task, box)
+    return
   }
   const groups = groupMembers(members)
   const entries = [...groups.entries()].map(([key, list]) => {
@@ -1582,6 +2207,13 @@ function scheduleEditor(task) {
 }
 
 async function renderFiles(task, box) {
+  // 这个块会被原地重绘（重读体积）：先把上一次挂在 box 后面的目录块摘掉，避免越叠越多。
+  let sibling = box.nextElementSibling
+  while (sibling && sibling.classList && sibling.classList.contains("dirs")) {
+    const after = sibling.nextElementSibling
+    sibling.remove()
+    sibling = after
+  }
   const files = await progressFiles(task)
   const rows = await Promise.all(
     files.map(async (file) => {
@@ -1682,7 +2314,7 @@ async function renderFiles(task, box) {
   }
 
   const dirRows = rows.filter((r) => r.group === "dir")
-  if (dirRows.length) {
+  if (dirRows.length || boardRepos(task)) {
     const dirs = document.createElement("div")
     dirs.className = "dirs"
     const label = document.createElement("span")
@@ -1695,8 +2327,26 @@ async function renderFiles(task, box) {
       el.onclick = () => void openReader(row.name, row.path, row.names.length ? row.names.join("\n") : t("dirEmpty"))
       dirs.appendChild(el)
     }
+    if (boardRepos(task)) {
+      const open = executionFoldKeys(task).some((key) => S.expanded.has(key))
+      const fold = button(open ? t("foldAll") : t("foldOpen"), "", () => toggleExecution(task), "只收起或展开执行目录里的会话。协调和长期不动。")
+      fold.classList.add("foldall")
+      dirs.appendChild(fold)
+    }
     box.after(dirs)
   }
+
+  // 收敛/归档之后体积不会自己变：给一个就地重读的入口，不用重建整个详情。
+  const again = document.createElement("button")
+  again.type = "button"
+  again.className = "btn tiny"
+  again.textContent = "\u21bb"
+  again.title = t("refreshSizes")
+  again.onclick = (event) => {
+    event.stopPropagation()
+    void renderFiles(task, box)
+  }
+  box.appendChild(again)
 }
 
 function progressOwner(task, name) {
@@ -1798,8 +2448,10 @@ function humanSize(size) {
 
 function render() {
   el("count").textContent = String(visibleTasks().length)
+  renderTabs()
   renderList()
   void renderDetail()
+  refreshBadge()
 }
 
 function toast(message, kind) {
@@ -1845,6 +2497,10 @@ async function dropMember(task, sessionId) {
 }
 
 async function setCoordinator(task, sessionId) {
+  if (sessionId && executionIds(task).has(sessionId)) {
+    toast(t("execCoord"), "error")
+    return
+  }
   task.coordinator = sessionId
   await persist(task)
   render()
@@ -1984,9 +2640,45 @@ async function startCoordinatorSession(task) {
   }
 }
 
+// 宿主只在它自己保存设置时才重读项目列表；新建任务的项目可能要过一会儿才出现。
+// 失败后后台每 5 秒补一次，最多约 3 分钟，宿主一刷新就自动建好协调会话。
+const coordRetrying = new Set()
+
+async function retryCoordinator(taskId, tries = 24) {
+  if (coordRetrying.has(taskId)) return
+  coordRetrying.add(taskId)
+  try {
+    for (let i = 0; i < tries; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 5000))
+      const task = S.tasks.get(taskId)
+      if (!task || task.coordinator) return
+      const coord = await startCoordinatorSession(task)
+      if (coord.id) {
+        const coordTitle = t("coordPrefix") + (task.title || task.id)
+        task.coordinator = coord.id
+        task.members = Array.isArray(task.members) ? task.members : []
+        if (!task.members.some((member) => member.sessionId === coord.id)) {
+          task.members.push({ sessionId: coord.id, title: coordTitle, directory: task.id, role: "main" })
+        }
+        await persist(task).catch(() => {})
+        render()
+        toast(t("coordCreated"), "success")
+        return
+      }
+      if (String(coord.error) !== "no-project") return
+    }
+  } finally {
+    coordRetrying.delete(taskId)
+  }
+}
+
 // 2026-11-05：协调会话没建成的任务，事后从这里补；同时补注册项目。
 async function ensureCoordinator(task) {
   if (S.coordBusy) return
+  if (coordRetrying.has(task.id)) {
+    toast(t("coordRetrying"), "info")
+    return
+  }
   S.coordBusy = true
   render()
   try {
@@ -1998,6 +2690,7 @@ async function ensureCoordinator(task) {
         t("coordFailed") + " " + String(coord.error || "") + (reg.error ? " / " + reg.error : ""),
         "error"
       )
+      if (String(coord.error) === "no-project") void retryCoordinator(task.id)
       return
     }
     task.coordinator = coord.id
@@ -2106,6 +2799,7 @@ async function submitForm() {
     closeForm()
     render()
     toast(t("created") + " · " + t("coordFailed") + " " + String(coord.error || "") + "\u3002" + t("coordRetry"), "error")
+    if (String(coord.error) === "no-project") void retryCoordinator(task.id)
   } finally {
     S.saveBusy = false
     saveBtn.disabled = false

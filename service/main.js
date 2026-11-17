@@ -10,7 +10,7 @@
  * 每个请求带 Authorization: Bearer OPENCHAMBER_SERVICE_TOKEN，GET /health 就绪。
  */
 import http from "node:http"
-import { readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync, renameSync } from "node:fs"
+import { readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync, renameSync, unlinkSync } from "node:fs"
 import { homedir } from "node:os"
 import { join, dirname } from "node:path"
 import { execFile } from "node:child_process"
@@ -85,6 +85,39 @@ function noteIdle(id, at, durationMs) {
   states.set(id, current)
 }
 
+/**
+ * 用宿主的 busy/idle 时间戳校准一个会话的状态，返回是否发生了翻转。
+ *
+ * 2026-11-07：事件流断一次，「执行结束」事件就丢了，running 会永久挂在 true，
+ * 看板一直给一个已经空闲的会话计时。所以补数据必须双向校准，而不是只敢置忙。
+ * 返回 false 表示这条会话没有时间戳（老会话），由调用方走「最后一条消息」的回退判据。
+ */
+function reconcileState(current, session, now) {
+  const turn = (session && session.metadata && session.metadata.openchamber && session.metadata.openchamber.turn) || {}
+  const updated = Number(session && session.time && session.time.updated) || 0
+  const busy = Number(session && session.time && session.time.busy) || 0
+  const idle = Number(session && session.time && session.time.idle) || 0
+  if (updated) current.updatedAt = updated
+  if (!busy && !idle) return false
+
+  const was = Boolean(current.running)
+  if (busy > idle) {
+    current.running = true
+    current.since = busy
+  } else if (updated > idle && now - updated < 3 * 60 * 1000) {
+    // 思考阶段宿主只刷新 updated，busy 要等执行才写。这段时间按进行中算，
+    // 三分钟没有新动静再回落到空闲，避免停住的会话一直转圈。
+    current.running = true
+    current.since = current.since || updated
+  } else {
+    current.running = false
+    current.since = 0
+    current.lastMs =
+      (busy && idle > busy ? idle - busy : 0) || Number(turn.durationMs) || current.lastMs || 0
+  }
+  return was !== current.running
+}
+
 function handleEvent(event) {
   const type = event && event.type
   const data = (event && event.data) || {}
@@ -94,6 +127,8 @@ function handleEvent(event) {
 
   if (type === "server.connected") {
     streamOk = true
+    // 断线期间的事件补不回来：重连后立刻对一次快照，否则「执行结束」丢了就会一直显示运行中。
+    cliSeed(true).catch((error) => log(`resync failed ${String((error && error.message) || error)}`))
     return
   }
   if (!id) return
@@ -375,6 +410,7 @@ async function cliSeed(force = false) {
   if (cliInflight) return cliInflight
   if (!force && Date.now() - cliAt < CLI_POLL_MS) return
   cliInflight = (async () => {
+    const seedStarted = Date.now()
     const out = await cli(["api", "get", "/api/session?limit=500"])
     if (!out) return
     let rows = []
@@ -385,35 +421,23 @@ async function cliSeed(force = false) {
       return
     }
     const now = Date.now()
+    let flipped = 0
     for (const session of rows) {
       const current = states.get(session.id) || { running: false, since: 0, lastMs: 0, updatedAt: 0 }
       const turn = session.metadata?.openchamber?.turn || {}
       if (!current.running) current.lastMs = current.lastMs || Number(turn.durationMs) || 0
       current.updatedAt = current.updatedAt || Number(session.time?.updated) || 0
 
-      // 服务可能在这个会话已经跑起来之后才启动；没收到 started 事件时，用最后一条消息补判一次。
-      const updated = Number(session.time?.updated) || 0
-      const turnEnd = Number(turn.endedAt) || 0
-      if (!current.running && updated && now - updated < 60 * 60 * 1000) {
-        const msgOut = await cli(["api", "get", `/api/session/${session.id}/message?limit=1`], 8000)
-        if (msgOut) {
-          try {
-            const parsedMsg = JSON.parse(msgOut)
-            const list = Array.isArray(parsedMsg) ? parsedMsg : parsedMsg.data || []
-            const last = list[list.length - 1]
-            const lastAt = last ? Number((last.info || last).time?.created) || 0 : 0
-            if (lastAt && turnEnd && lastAt > turnEnd) {
-              current.running = true
-              current.since = lastAt
-            }
-          } catch {}
-        }
+      // 先按宿主的 busy/idle 真值校准：这条能把「丢了结束事件」的假 running 清掉。
+      if (reconcileState(current, session, now)) {
+        flipped++
+        log(`state ${current.running ? "running" : "idle"} ${session.id} by timestamps`)
       }
       states.set(session.id, current)
     }
     cliAt = Date.now()
     const running = [...states.values()].filter((s) => s.running).length
-    log(`seed sessions=${rows.length} running=${running}`)
+    log(`seed sessions=${rows.length} running=${running} ms=${Date.now() - seedStarted}`)
   })().finally(() => {
     cliInflight = null
   })
@@ -447,12 +471,7 @@ const server = http.createServer(async (req, res) => {
       .map((id) => id.trim())
       .filter((id) => /^ses_[A-Za-z0-9]+$/.test(id))
 
-    if (!streamAlive() && Date.now() - cliAt > CLI_POLL_MS) await cliSeed()
-    // 事件流看不到的会话（服务晚启动、或错过 started）用一次快照补齐。
-    if (ids.some((id) => !states.has(id)) && Date.now() - cliAt > CLI_POLL_MS) await cliSeed()
     const force = url.searchParams.get("force") === "1"
-    if (force) await cliSeed(true)
-
     const now = Date.now()
     const out = {}
     for (const id of ids) {
@@ -468,7 +487,11 @@ const server = http.createServer(async (req, res) => {
     }
     res.writeHead(200, { "content-type": "application/json" })
     res.end(JSON.stringify({ at: now, stream: streamAlive(), states: out }))
-    if (!Object.keys(out).length && ids.length) log(`states miss ids=${ids.join(",")}`)
+    const stale = !streamAlive() && now - cliAt > CLI_POLL_MS
+    const missing = ids.some((id) => !states.has(id)) && now - cliAt > CLI_POLL_MS
+    if (force || stale || missing) {
+      cliSeed(force).catch((error) => log(`seed failed ${String((error && error.message) || error)}`))
+    }
     return
   }
 
@@ -524,6 +547,40 @@ const server = http.createServer(async (req, res) => {
     log(`createSession ok dir=${directory} id=${sessionId}`)
     res.writeHead(200, { "content-type": "application/json" })
     res.end(JSON.stringify({ sessionId }))
+    return
+  }
+
+  // 首条消息不能放进 /createSession 的 query：主机代理的 POST body 会丢，长文本也会擅破 query 长度。
+  // 面板先把文本写进自己能写的 ~/.task-hub/，再用这条把文件送进会话。
+  if (url.pathname === "/sendFile" && (req.method === "GET" || req.method === "POST")) {
+    const sessionId = String(url.searchParams.get("sessionId") || "").trim()
+    const name = String(url.searchParams.get("name") || "").trim()
+    if (!/^ses_[A-Za-z0-9]+$/.test(sessionId) || !/^seed-[A-Za-z0-9]+\.txt$/.test(name)) {
+      res.writeHead(400, { "content-type": "application/json" })
+      res.end('{"error":"bad-target"}')
+      return
+    }
+    const file = join(LOG_DIR, name)
+    let text = ""
+    try {
+      text = readFileSync(file, "utf8")
+    } catch {
+      res.writeHead(404, { "content-type": "application/json" })
+      res.end('{"error":"no-file"}')
+      return
+    }
+    const sent = await sendPatrol(sessionId, text.slice(0, 8000))
+    try {
+      unlinkSync(file)
+    } catch {}
+    if (!sent) {
+      res.writeHead(502, { "content-type": "application/json" })
+      res.end('{"error":"send-failed"}')
+      return
+    }
+    log(`sendFile ok ${sessionId} chars=${text.length}`)
+    res.writeHead(200, { "content-type": "application/json" })
+    res.end('{"ok":true}')
     return
   }
 
@@ -671,6 +728,10 @@ server.listen(PORT, "127.0.0.1", () => {
   followStream().catch((error) => log(`stream loop failed ${String((error && error.message) || error)}`))
   cliSeed().catch((error) => log(`seed failed ${String((error && error.message) || error)}`))
   loadSchedules()
+  // 事件流看着活着也可能漏事件（重连、通道抖动），每 60 秒按时间戳对一次真值。
+  setInterval(() => {
+    cliSeed(true).catch((error) => log(`reconcile failed ${String((error && error.message) || error)}`))
+  }, 60000)
   setInterval(() => {
     tickSchedules().catch((error) => log(`schedule tick failed ${String((error && error.message) || error)}`))
   }, 30000)
