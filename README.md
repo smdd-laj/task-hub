@@ -1,5 +1,7 @@
 # Task Hub
 
+English | [简体中文](README.zh-CN.md)
+
 One task, many agent sessions, one shared progress folder.
 
 Task Hub is an OpenChamber panel for work that more than one session has to move
