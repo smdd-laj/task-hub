@@ -101,14 +101,17 @@ function reconcileState(current, session, now) {
   if (!busy && !idle) return false
 
   const was = Boolean(current.running)
+  const ended = Number(turn.endedAt) || 0
+  // 结束后 updated 会被同一笔写入顶高几毫秒到几秒。这个缝不算新的一轮，
+  // 否则每个会话结束都要再转三分钟。只有明显晚于 idle 和 ended、并且还在动，才是思考。
+  const settled = Math.max(idle, ended)
+  const thinking = busy <= idle && updated > settled + 3000 && now - updated < 60 * 1000
   if (busy > idle) {
     current.running = true
     current.since = busy
-  } else if (updated > idle && now - updated < 3 * 60 * 1000) {
-    // 思考阶段宿主只刷新 updated，busy 要等执行才写。这段时间按进行中算，
-    // 三分钟没有新动静再回落到空闲，避免停住的会话一直转圈。
+  } else if (thinking) {
     current.running = true
-    current.since = current.since || updated
+    current.since = current.since && current.since > settled ? current.since : updated
   } else {
     current.running = false
     current.since = 0

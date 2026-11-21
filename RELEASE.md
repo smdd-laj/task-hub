@@ -1,4 +1,15 @@
-# 发布材料（Task Hub 1.1.0）
+# 发布材料（Task Hub）
+
+## Task Hub 1.9.0（2026-11-21）
+
+这一版把「能不能让新人用起来」补齐了，不只是面板本身。
+
+- **新人安装包**：`integrations/opencode/` 带三个子代理（看板操作 / worktree-builder / 信箱调度）和技能 `task-board`；`scripts/install-integrations.mjs` 一键装进 `~/.config/opencode/`，支持 `--main-agent`、`--task-hub-home`、`--dry-run`、`--force`（覆盖前备份）。
+- **上手文档**：`docs/QUICKSTART.zh-CN.md`（5 分钟装完）、`docs/WORKFLOW.zh-CN.md`（三级目录、角色、写域、一轮巡检、停点）、`docs/AGENT-PROMPT.zh-CN.md`（把仓库丢给 AI 时直接粘的约束）。
+- **命令行**：`package.json` 增加 `bin.taskhub`，`npm link` 后即可用；新增 `npm run integrations:install` 与 `npm run integrations:dry`。
+- **面板与命令**：1.8.67–1.8.76 的累积改动（三级目录、宿主建会话、长期四格、执行基线、默认收拢、状态收敛）一并入库。版本号从 1.8.76 升到 **1.9.0**。
+
+升级注意：子代理和技能要重启 OpenChamber 才会加载；已存在的同名文件默认不覆盖。
 
 ## 一、提交到扩展列表
 

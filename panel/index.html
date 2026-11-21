@@ -124,6 +124,12 @@
   .tree-line { display: flex; align-items: center; gap: 4px; }
   .tree-line > .tree-fold { flex: 1; min-width: 0; width: auto; }
   .tree-line > .group-add { margin-inline-start: 2px; }
+  .tree-line.repo {
+    border: 1px solid var(--line); border-radius: 8px; background: var(--soft);
+    padding: 6px 8px; margin: 4px 0 2px; gap: 6px;
+  }
+  .tree-line.repo > .tree-fold { border: 0; background: transparent; margin: 0; padding: 0; }
+  .tree-line.repo > .repo-exec { margin-inline-start: auto; }
   .tree-body { padding-inline-start: 14px; }
   .tree-slot { margin: 6px 0; }
   .tree-slot-name { font-weight: 650; }
@@ -193,7 +199,9 @@
   .file.dir::before { content: "\25b8 "; color: var(--accent); opacity: .8; }
   .dirs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 0 8px; border-bottom: 1px solid var(--line); }
   .dirs-label { font-size: 11px; color: var(--hint); }
-  .foldall { margin-left: auto; }
+  .repo-pick { flex-direction: column; align-items: stretch; gap: 4px; padding: 4px 0 8px; }
+  .repo-choice { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+  .repo-actions { display: flex; gap: 6px; margin-top: 4px; }
   .file.bad { color: var(--error-text, #c0392b); border: 1px solid var(--error-text, #c0392b); }
   .bar { display: inline-block; width: 30px; height: 4px; border-radius: 2px; background: var(--line); margin-inline-start: 5px; vertical-align: middle; overflow: hidden; }
   .bar i { display: block; height: 100%; background: var(--accent); }

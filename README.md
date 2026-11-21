@@ -11,6 +11,37 @@ session.
 It does **not** send messages into other sessions. Sending stays a deliberate act
 in the session you are talking to; Task Hub only composes the line for you.
 
+## Quick start
+
+```bash
+npm link                                  # exposes the taskhub command
+node scripts/install-integrations.mjs --main-agent "build"
+taskhub task-create --title "..." --goal "..." --accept "..." --repos cashier
+```
+
+Restart OpenChamber, open the Task Hub panel, and you should see three levels:
+repository → long-lived / execution slots → sessions.
+
+Full steps: [docs/QUICKSTART.zh-CN.md](docs/QUICKSTART.zh-CN.md) (extension
+permissions, `repos.json`, installing the agents, first task, the prompt to hand
+the repository to an AI), [docs/WORKFLOW.zh-CN.md](docs/WORKFLOW.zh-CN.md) and
+[docs/AGENT-PROMPT.zh-CN.md](docs/AGENT-PROMPT.zh-CN.md).
+
+## Agent kit
+
+`integrations/opencode/` ships the definitions the panel expects:
+
+| File | Role |
+|---|---|
+| `agents/看板操作.md` | runs `taskhub` only: create tasks, add repos, open sessions |
+| `agents/worktree-builder.md` | creates one worktree and its session per dispatch |
+| `agents/信箱调度.md` | coordinator: one inspection round, four buckets, nudges, summary |
+| `skills/task-board/SKILL.md` | the rules and four-line report for the above |
+
+`node scripts/install-integrations.mjs` copies them into `~/.config/opencode/`,
+substituting `--main-agent`; it skips existing files, backs up on `--force`, and
+supports `--dry-run`.
+
 ## What it does
 
 - **Tasks with several sessions.** Add sessions from any project that is open in

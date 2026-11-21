@@ -6,6 +6,35 @@ Task Hub 是给「需要多个会话一起推进」的活准备的面板。每�
 
 它**不会**把消息发进别的会话。发信仍然是你在当前会话里明确做的一次动作，面板只帮你把那句话拼好。
 
+## 快速开始
+
+```bash
+npm link                                  # 提供 taskhub 命令
+node scripts/install-integrations.mjs --main-agent "build"
+taskhub task-create --title "..." --goal "..." --accept "..." --repos cashier
+```
+
+重启 OpenChamber，打开 Task Hub 面板，应当看到「仓库 → 长期四格 / 执行基线 → 会话」三级。
+
+完整步骤见：
+
+- [docs/QUICKSTART.zh-CN.md](docs/QUICKSTART.zh-CN.md)：扩展授权、`repos.json`、装子代理、建第一个任务、把仓库丢给 AI 的提示词。
+- [docs/WORKFLOW.zh-CN.md](docs/WORKFLOW.zh-CN.md)：三级目录、角色、写域、一轮巡检与停点。
+- [docs/AGENT-PROMPT.zh-CN.md](docs/AGENT-PROMPT.zh-CN.md)：可直接粘贴给 AI 的启动约束。
+
+## 子代理与技能
+
+仓库的 `integrations/opencode/` 下带一套可直接安装的定义：
+
+| 文件 | 作用 |
+|---|---|
+| `agents/看板操作.md` | 只跑 `taskhub`：建任务、加项目、开会话 |
+| `agents/worktree-builder.md` | 建 worktree 并顺手建会话，一次一个仓库 |
+| `agents/信箱调度.md` | 协调会话：一轮巡检、四桶、催办、汇总 |
+| `skills/task-board/SKILL.md` | 建任务 / 加项目 / 开会话的判定与四行回报 |
+
+`node scripts/install-integrations.mjs` 会按 `--main-agent` 替换模板里的主代理名，装进 `~/.config/opencode/`；已有文件默认跳过，`--force` 覆盖并留备份，`--dry-run` 只看清单。
+
 ## 能做什么
 
 - **一件任务多个会话**：从 OpenChamber 里已打开的项目中添加会话，拖动排序，顺序会保存。

@@ -216,6 +216,98 @@ function validBranch(branch) {
   return true
 }
 
+function posixPath(value) {
+  return String(value || "").replace(/\\/g, "/")
+}
+
+function boardSlot(kind, branch, slotPath, purpose, note) {
+  return { kind, branch, path: posixPath(slotPath), note: note || "", purpose }
+}
+
+/** 与面板「加项目」同一套：长期四格必有，执行基线先空着。不建 worktree。 */
+function makeBoardEntry(repo) {
+  const root = path.normalize(repo.path)
+  const base = repo.base || "master"
+  const micro = repo.alias === "jonglfow-micro"
+  const sibling = (name) => worktreePathFor(root, name)
+  return {
+    key: repo.alias,
+    name: repo.label || repo.alias,
+    root: posixPath(root),
+    longLived: [
+      boardSlot("main", base, root, "主检出只读。不在这里改代码，也不切分支。", "主检出只读"),
+      boardSlot("test", "test", sibling("test"), "长期测试目录。合进 test 只能在这个目录里做。目录还没建时不会自动创建。", ""),
+      boardSlot("develop", "develop", sibling("develop"), "长期开发目录。合进 develop 只能在这个目录里做。目录还没建时不会自动创建。", ""),
+      boardSlot(
+        "release",
+        "release",
+        micro ? "" : sibling("release"),
+        micro
+          ? "本地建不出 release 检出，因为 refs/heads/release 和已有的 release/* 撞名。合 release 走云效 MR。"
+          : "长期预发目录。合进 release 只能在这个目录里做。目录还没建时不会自动创建。",
+        micro ? "本地建不出：refs/heads/release 与 release/* 冲突。合 release 走云效 MR。" : ""
+      )
+    ],
+    baseline: {
+      branch: "未指定",
+      path: "",
+      note: "这件任务还没有指定基线",
+      purpose: "这件任务的基线还没定。新分支从这里拉，做完合回这里。"
+    },
+    parallels: []
+  }
+}
+
+function baselineFromFlags(repo, flags) {
+  const branch = String(flags.baseline || "").trim()
+  if (!branch) return null
+  // 执行基线可以是已经存在的 fix/ 分支；新建分支仍只走 feature/ 或 hotfix/。
+  if (!validBranch(branch) && !/^fix\/[A-Za-z0-9][A-Za-z0-9._-]{0,60}$/.test(branch)) {
+    fail("bad-branch", "执行基线只允许 feature/<slug>、hotfix/<slug>，或已有的 fix/<slug>")
+  }
+  let slotPath = ""
+  if (flags["baseline-path"]) {
+    slotPath = path.normalize(expandHome(String(flags["baseline-path"])))
+    if (!path.isAbsolute(slotPath)) fail("bad-path", slotPath)
+    if (!fs.existsSync(slotPath)) fail("path-missing", slotPath)
+  } else {
+    const slug = branch.split("/").slice(1).join("-")
+    const guess = worktreePathFor(path.normalize(repo.path), slug)
+    if (fs.existsSync(guess)) slotPath = guess
+  }
+  return {
+    branch,
+    path: posixPath(slotPath),
+    note: slotPath ? "" : "分支已指定，目录还没建。不会自动创建。",
+    purpose: "这件任务的基线。新分支从这里拉，做完合回这里。"
+  }
+}
+
+function attachBoard(task, aliases, flags) {
+  if (!task.board || typeof task.board !== "object") task.board = { repos: [] }
+  if (!Array.isArray(task.board.repos)) task.board.repos = []
+  const added = []
+  const updated = []
+  const skipped = []
+  for (const alias of aliases) {
+    const repo = resolveRepo(alias)
+    const baseline = baselineFromFlags(repo, flags)
+    const existing = task.board.repos.find((row) => row.key === repo.alias)
+    if (existing) {
+      if (baseline && (!existing.baseline || !existing.baseline.branch || existing.baseline.branch === "未指定")) {
+        existing.baseline = baseline
+        updated.push(repo.alias)
+      } else skipped.push(repo.alias)
+      continue
+    }
+    const entry = makeBoardEntry(repo)
+    if (baseline) entry.baseline = baseline
+    task.board.repos.push(entry)
+    added.push(repo.alias)
+  }
+  return { added, updated, skipped }
+}
+
 function taskDirOf(task) {
   return expandHome(task.progressDir)
 }
@@ -292,10 +384,12 @@ function cmdTaskCreate() {
     createdAt: now,
     updatedAt: now,
     members: coord.sessionId
-      ? [{ sessionId: coord.sessionId, title: coordTitle, directory: id, role: "main" }]
+      ? [{ sessionId: coord.sessionId, title: coordTitle, directory: dir, role: "main" }]
       : [],
     coordinator: coord.sessionId || ""
   }
+  const aliases = String(flags.repos || "").split(",").map((item) => item.trim()).filter(Boolean)
+  const board = aliases.length ? attachBoard(task, aliases, flags) : { added: [], updated: [], skipped: [] }
   data.tasks.push(task)
   saveTasks(data)
 
@@ -305,8 +399,21 @@ function cmdTaskCreate() {
     projectId: project.id || "",
     coordinator: coord.sessionId || "",
     coordinatorError: coord.error || "",
-    repos: []
+    repos: board
   })
+}
+
+function cmdBoardAdd() {
+  const taskId = String(flags.task || "").trim()
+  const aliases = String(flags.repo || "").split(",").map((item) => item.trim()).filter(Boolean)
+  if (!taskId || !aliases.length) fail("missing-fields", "--task --repo 都要给，repo 可以逗号分隔")
+  const data = loadTasks()
+  const task = findTask(data, taskId)
+  const board = attachBoard(task, aliases, flags)
+  if (flags["dry-run"]) return ok({ dryRun: true, task: taskId, ...board })
+  task.updatedAt = Date.now()
+  saveTasks(data)
+  ok({ task: taskId, ...board })
 }
 
 function cmdWorktreeCreate() {
@@ -454,15 +561,16 @@ function help() {
     "taskhub — 任务协作板受控命令（给协调会话用）",
     "",
     "  taskhub repo-list",
-    "  taskhub task-create --title <t> --goal <g> --accept <a> [--dir <abs>] [--dry-run]",
+    "  taskhub task-create --title <t> --goal <g> --accept <a> [--repos a,b] [--baseline feature/<slug>] [--dry-run]",
+    "  taskhub board-add --task <id> --repo <alias>[,alias] [--baseline feature/<slug>] [--baseline-path <abs>] [--dry-run]",
     "  taskhub worktree-create --task <id> --repo <alias> --branch feature/<slug> [--base master] [--no-record] [--dry-run]",
     "  taskhub worktree-create --repo <alias> --branch test|develop|release --long-lived [--dry-run]   # 长期 worktree，不绑任务",
     "  taskhub repo-record --task <id> --repo <alias> --path <abs> --branch feature/<slug> [--base master] [--dry-run]",
     "  taskhub session-create --dir <abs> --title <t> [--agent 分档开发主代理|信箱调度|值班调度|流式开发主代理]",
-    "  taskhub member-add --task <id> --session <ses_x> --title <t> [--role main|helper] [--dir <label>]",
+    "  taskhub member-add --task <id> --session <ses_x> --title <t> [--role main|helper] [--dir <abs>]",
     "  taskhub task-show --task <id>",
     "",
-    "worktree 落点：仓内 .worktrees（仓的 .gitignore 已忽略时）否则 D:\\work\\<repo>--worktrees。"
+    "worktree 落点：D:\\work\\<repo>--worktrees\\<名字>。board-add 只写目录，不建 worktree。"
   ]
   process.stdout.write(lines.join("\n") + "\n")
 }
@@ -470,6 +578,7 @@ function help() {
 const table = {
   "repo-list": cmdRepoList,
   "task-create": cmdTaskCreate,
+  "board-add": cmdBoardAdd,
   "worktree-create": cmdWorktreeCreate,
   "repo-record": cmdRepoRecord,
   "session-create": cmdSessionCreate,

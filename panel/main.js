@@ -1893,6 +1893,11 @@ ${GUEST_UI_LOOK_CSS}`;
       patrol: "Run a patrol",
       foldAll: "Collapse sessions",
       foldOpen: "Expand sessions",
+      addRepo: "Add repo",
+      repoAdded: "Repos added",
+      repoAllIn: "Every listed repo is already on this task",
+      repoNeedPick: "Pick a repo first",
+      repoSave: "Add",
       phase_active: "Active",
       phase_done: "Done",
       phase_dropped: "Dropped",
@@ -2056,6 +2061,11 @@ ${GUEST_UI_LOOK_CSS}`;
       patrol: "让协调巡检",
       foldAll: "一键收起",
       foldOpen: "一键展开",
+      addRepo: "加项目",
+      repoAdded: "已加上项目",
+      repoAllIn: "名单里的项目都已经在这件任务上",
+      repoNeedPick: "先选一个项目",
+      repoSave: "加上",
       phase_active: "进行中",
       phase_done: "已完成",
       phase_dropped: "已废弃",
@@ -2150,6 +2160,9 @@ ${GUEST_UI_LOOK_CSS}`;
     dragId: null,
     dragTaskId: null,
     labels: {},
+    catalog: [],
+    repoPick: false,
+    repoChosen: /* @__PURE__ */ new Set(),
     phase: "active"
   };
   var t = (key) => DICT[S.loc] && DICT[S.loc][key] || DICT.en[key] || key;
@@ -2173,6 +2186,16 @@ ${GUEST_UI_LOOK_CSS}`;
     for (const item of S.stateNodes) renderState(item.el, item.member);
     for (const item of S.groupNodes) paintGroupState(item.el, item.list);
     paintTaskDots();
+    const task = currentTask();
+    if (!task || !boardRepos(task)) return;
+    if (S.newFor || S.openMenu || S.renaming || S.headMenu || S.newBusy || S.dragId || S.repoPick) return;
+    const sig = repoActivitySig(task);
+    if (sig === S.repoActivity) return;
+    const box = el2("detail");
+    const scroll = box ? box.scrollTop : 0;
+    S.repoActivity = sig;
+    void renderDetail();
+    if (box) box.scrollTop = scroll;
   }
   function paintTaskDots() {
     const box = el2("list");
@@ -2207,6 +2230,10 @@ ${GUEST_UI_LOOK_CSS}`;
       if (repo.path) map[normPath(repo.path)] = String(repo.label);
     }
     return map;
+  }
+  async function readRepoCatalog() {
+    const value = await readJson(FILE_REPOS, { repos: [] });
+    return (value.repos || []).filter((repo) => repo && repo.alias && repo.path);
   }
   async function readSettings() {
     const value = await readJson(FILE_SETTINGS, {});
@@ -2433,8 +2460,11 @@ ${GUEST_UI_LOOK_CSS}`;
   function stateOf(member) {
     const live = liveOf(member);
     if (live && (live.activity === "waiting-permission" || live.activity === "waiting-question")) return "waiting";
-    if (live && (live.activity === "running" || live.activity === "retrying")) return "running";
     const svc = S.service.get(member.sessionId);
+    if (svc && !svc.running && live && (live.activity === "running" || live.activity === "retrying")) {
+      if (svc.updatedAt && Date.now() - svc.updatedAt < 2e4) return svc.lastMs ? "done" : "idle";
+    }
+    if (live && (live.activity === "running" || live.activity === "retrying")) return "running";
     if (svc) {
       if (svc.running) return "running";
       if (svc.lastMs) return "done";
@@ -2545,6 +2575,70 @@ ${GUEST_UI_LOOK_CSS}`;
       return { id: "", error: String(error && error.code || error && error.message || "ERR") };
     }
   }
+  async function projectForDirectory(dir) {
+    const want = normPath(dir);
+    if (!want) return null;
+    const snapshot = await host.listProjects().catch(() => null);
+    const list = snapshot && Array.isArray(snapshot.projects) ? snapshot.projects : [];
+    const rows = list.map((project) => ({
+      project,
+      dir: normPath(project.directory || project.path || "")
+    })).filter((row) => row.dir);
+    const exact = rows.find((row) => row.dir === want);
+    if (exact) return { project: exact.project, worktree: "" };
+    const parent = rows.filter((row) => want.startsWith(row.dir + "/")).sort((a, b) => b.dir.length - a.dir.length)[0];
+    if (parent) return { project: parent.project, worktree: dir };
+    return null;
+  }
+  async function ensureWorktrees(dir) {
+    const located = await projectForDirectory(dir);
+    if (!located || !located.project || !located.project.id) return located;
+    if (!located.worktree) return located;
+    const root = normPath(located.project.directory || located.project.path || "");
+    const want = normPath(located.worktree);
+    if (!root || !want || want === root) return located;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        const sessionsSnapshot = await host.listSessions(located.project.id);
+        const list = sessionsSnapshot && Array.isArray(sessionsSnapshot.sessions) ? sessionsSnapshot.sessions : [];
+        if (list.some((session) => normPath(session.directory) === want)) return located;
+      } catch {
+      }
+      if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+    return located;
+  }
+  async function startHostSession(task, dir, title, text) {
+    if (typeof host.startSession !== "function") return { id: "", error: "no-start-session", sent: false };
+    const located = await ensureWorktrees(dir);
+    if (!located || !located.project || !located.project.id) return { id: "", error: "no-project", sent: false };
+    const payload = {
+      providerId: "task-hub",
+      id: task.id,
+      title,
+      url: "https://task-hub.local/" + encodeURIComponent(task.id),
+      projectId: located.project.id,
+      navigation: "preserve"
+    };
+    if (located.worktree) payload.worktree = { kind: "existing", directory: absoluteDir(located.worktree) };
+    if (text) payload.text = text;
+    try {
+      let res = null;
+      try {
+        res = await withTimeout(host.startSession(payload), 18e4, "startSession");
+      } catch (error) {
+        if (String(error && error.code || "") !== "NOT_GRANTED" || !payload.text) throw error;
+        delete payload.text;
+        res = await withTimeout(host.startSession(payload), 18e4, "startSession");
+        if (res && res.sessionId) return { id: String(res.sessionId), error: "", sent: false };
+        return { id: "", error: "no-session", sent: false };
+      }
+      if (res && res.sessionId) return { id: String(res.sessionId), error: "", sent: Boolean(text) };
+      return { id: "", error: String(res && (res.failure || res.sent) || "no-session"), sent: false };
+    } catch (error) {
+      return { id: "", error: String(error && error.code || error && error.message || "ERR"), sent: false };
+    }
+  }
   async function sendFirstMessage(sessionId, text) {
     const body = String(text || "").trim();
     if (!body) return { ok: true, skipped: true };
@@ -2626,26 +2720,32 @@ ${GUEST_UI_LOOK_CSS}`;
   async function serviceStates(ids, force) {
     if (!ids.length) return { data: null, error: "" };
     if (typeof host.serviceRequest !== "function") return { data: null, error: "no-service-api" };
-    try {
-      const query = { ids: ids.join(",") };
-      if (force) query.force = "1";
-      const res = await host.serviceRequest({
-        method: "GET",
-        path: "/states",
-        query
-      });
-      const text = typeof res?.body === "string" ? res.body : null;
-      if (!text) return { data: null, error: "empty" };
-      return { data: JSON.parse(text), error: "" };
-    } catch (error) {
-      return { data: null, error: String(error && error.code || error && error.message || "ERR") };
-    }
+    const chunks = [];
+    for (let i = 0; i < ids.length; i += 20) chunks.push(ids.slice(i, i + 20));
+    const merged = {};
+    const errors = [];
+    await Promise.all(chunks.map(async (chunk) => {
+      try {
+        const query = { ids: chunk.join(",") };
+        if (force) query.force = "1";
+        const res = await host.serviceRequest({ method: "GET", path: "/states", query });
+        const text = typeof res?.body === "string" ? res.body : "";
+        const data = text ? JSON.parse(text) : null;
+        if (data && data.states) Object.assign(merged, data.states);
+        else errors.push("empty");
+      } catch (error) {
+        errors.push(String(error && error.code || error && error.message || "ERR"));
+      }
+    }));
+    if (!Object.keys(merged).length && errors.length) return { data: null, error: errors[0] };
+    return { data: { states: merged }, error: errors.length ? errors[0] : "" };
   }
   async function loadAll(force = false) {
     const started = performance.now();
     try {
       S.settings = await readSettings();
       S.labels = await readRepoLabels();
+      S.catalog = await readRepoCatalog();
       const list = await readTasks();
       const jsonMs = Math.round(performance.now() - started);
       S.ids = list.map((task) => task.id);
@@ -2658,6 +2758,17 @@ ${GUEST_UI_LOOK_CSS}`;
       }
       const live = await collectLive(force);
       S.live = live.map;
+      for (const task of S.tasks.values()) {
+        for (const member of task.members || []) {
+          if (S.live.has(member.sessionId)) continue;
+          S.live.set(member.sessionId, {
+            activity: "unknown",
+            title: member.title || "",
+            directory: member.directory || "",
+            parentId: null
+          });
+        }
+      }
       void loadSchedules();
       recomputeBusy();
       void subscribeLive();
@@ -2675,7 +2786,8 @@ ${GUEST_UI_LOOK_CSS}`;
           S.service.set(id, {
             running: Boolean(state && state.running),
             lastMs: Number(state && state.lastMs) || 0,
-            since: Number(state && state.since) || 0
+            since: Number(state && state.since) || 0,
+            updatedAt: Number(state && state.updatedAt) || 0
           });
           const current = S.live.get(id) || { activity: "unknown", title: "", directory: "", parentId: null };
           if (!(current.activity === "running" || current.activity === "retrying" || current.activity === "waiting-permission" || current.activity === "waiting-question")) {
@@ -2969,7 +3081,7 @@ ${GUEST_UI_LOOK_CSS}`;
       nameBtn.title = t("open");
       nameBtn.onclick = async () => {
         try {
-          await gotoSession(member.sessionId);
+          await gotoSession(member.sessionId, { keepPanel: false });
         } catch (error) {
           toast(String(error && error.code || "ERR"), "error");
         }
@@ -3223,10 +3335,17 @@ ${GUEST_UI_LOOK_CSS}`;
     const first = String(S.newText || "").trim();
     S.newBusy = true;
     void renderDetail();
-    const res = await createSessionRequest(dir, title, "");
+    let res = await startHostSession(task, dir, title, first);
+    const hosted = Boolean(res.id);
+    const hostError = hosted ? "" : String(res.error || "");
+    if (!hosted && hostError === "no-start-session") res = await createSessionRequest(dir, title, "");
     S.newBusy = false;
     if (!res.id) {
-      toast(String(res.error || "ERR"), "error");
+      const why = hostError === "NOT_FOUND"
+        ? "\u8fd9\u4e2a\u76ee\u5f55\u8fd8\u6ca1\u88ab\u5bbf\u4e3b\u8ba4\u6210\u4ed3\u5e93\u7684 worktree\u3002\u5148\u5728\u4fa7\u680f\u6253\u5f00\u4e00\u6b21\u8fd9\u4e2a\u9879\u76ee\uff0c\u7b49\u5b83\u628a\u5206\u652f\u5217\u51fa\u6765\uff0c\u518d\u56de\u8fd9\u91cc\u5efa\u3002"
+        : String(res.error || hostError || "ERR");
+      void panelTiming("new-session failed dir=" + dir + " error=" + hostError);
+      toast(why, "error");
       void renderDetail();
       return;
     }
@@ -3235,7 +3354,7 @@ ${GUEST_UI_LOOK_CSS}`;
     const entry = {
       sessionId: res.id,
       title,
-      directory: dir.split(/[\/]/).filter(Boolean).pop() || key,
+      directory: absoluteDir(dir),
       role
     };
     target.members.push(entry);
@@ -3256,11 +3375,18 @@ ${GUEST_UI_LOOK_CSS}`;
       S.newDir = "";
     }
     S.newCreated = "";
-    const sent = await sendFirstMessage(res.id, first);
+    liveCache.at = 0;
+    S.live.set(res.id, {
+      activity: first ? "running" : "idle",
+      title,
+      directory: dir,
+      parentId: null
+    });
+    const sent = hosted && res.sent ? { ok: true } : await sendFirstMessage(res.id, first);
     render();
     if (!sent.ok) toast(t("sendFailed") + " · " + String(sent.error || ""), "error");
-    else toast(t("sessionCreated") + (first ? " · " + t("sent") : "") + (stillOpen ? "" : " " + res.id), "success");
-    if (stillOpen) await gotoSession(res.id);
+    else toast(t("sessionCreated") + (first ? " · " + t("sent") : "") + (hosted ? "" : " · 侧栏未登记") + (stillOpen ? "" : " " + res.id), "success");
+    if (stillOpen) await gotoSession(res.id, { keepPanel: false });
   }
   function groupHeader(task, key, list, hasCoord) {
     const row = document.createElement("div");
@@ -3432,7 +3558,7 @@ function parallelPurpose(repo, dir) {
 function treeSlot(task, title, kind, members, note, foldKey, purpose, directory) {
   const slot = document.createElement("div")
   slot.className = "tree-slot"
-  const open = treeOpen(foldKey, true)
+  const open = treeOpen(foldKey, false)
   const head = document.createElement("div")
   head.className = "tree-line"
   const fold = document.createElement("button")
@@ -3598,7 +3724,12 @@ function executionFoldKeys(task) {
   if (!repos) return keys
   const laid = arrangeBoard(task)
   for (const repo of repos) {
+    keys.push("tree:" + task.id + ":repo:" + repo.key)
+    keys.push("tree:" + task.id + ":long:" + repo.key)
     keys.push("tree:" + task.id + ":exec:" + repo.key)
+    ;(repo.longLived || []).forEach((_, index) => {
+      keys.push("tree:" + task.id + ":slot:" + repo.key + ":long:" + index)
+    })
     keys.push("tree:" + task.id + ":slot:" + repo.key + ":base")
     const extras = laid.parallel[repo.key]
     if (extras) {
@@ -3621,6 +3752,72 @@ function toggleExecution(task) {
   void renderDetail()
 }
 
+function repoExecKeys(task, repo, laid) {
+  const keys = [
+    "tree:" + task.id + ":repo:" + repo.key,
+    "tree:" + task.id + ":exec:" + repo.key,
+    "tree:" + task.id + ":slot:" + repo.key + ":base"
+  ]
+  const extras = laid.parallel[repo.key]
+  if (extras) {
+    for (const dir of extras.keys()) keys.push("tree:" + task.id + ":slot:" + repo.key + ":par:" + dir)
+  }
+  return keys
+}
+
+function repoExecOpen(task, repo) {
+  return S.expanded.has("tree:" + task.id + ":repo:" + repo.key) &&
+    S.expanded.has("tree:" + task.id + ":exec:" + repo.key)
+}
+
+function toggleRepoExec(task, repo, laid) {
+  const keys = repoExecKeys(task, repo, laid)
+  if (!S.treeSeen) S.treeSeen = new Set()
+  const open = repoExecOpen(task, repo)
+  for (const key of keys) {
+    S.treeSeen.add(key)
+    if (open) S.expanded.delete(key)
+    else S.expanded.add(key)
+  }
+  void renderDetail()
+}
+
+function repoBar(task, repo, laid, repoOpen) {
+  const repoKey = "tree:" + task.id + ":repo:" + repo.key
+  const line = document.createElement("div")
+  line.className = "tree-line repo"
+  const fold = document.createElement("button")
+  fold.type = "button"
+  fold.className = "tree-fold"
+  const caret = document.createElement("span")
+  caret.className = "caret"
+  caret.textContent = repoOpen ? "\u25be" : "\u25b8"
+  const name = document.createElement("span")
+  name.className = "group-name"
+  name.textContent = repoTitle(repo)
+  fold.append(caret, name)
+  fold.onclick = () => treeToggle(repoKey)
+  line.appendChild(fold)
+  const shown = repoExecOpen(task, repo)
+  const toggle = button2(
+    shown ? "\u6536\u8d77" : "\u5c55\u5f00",
+    "",
+    () => toggleRepoExec(task, repo, laid),
+    shown ? "\u6536\u8d77\u8fd9\u4e2a\u4ed3\u5e93\uff0c\u53ea\u7559\u9879\u76ee\u540d\u79f0\u3002" : "\u5c55\u5f00\u8fd9\u4e2a\u4ed3\u5e93\u7684\u6267\u884c\u3001\u5206\u652f\u548c\u4f1a\u8bdd\u3002\u957f\u671f\u4e0d\u52a8\u3002"
+  )
+  toggle.classList.add("repo-exec")
+  line.appendChild(toggle)
+  const members = folderMembers(laid, repo, "repo")
+  if (members.length) {
+    const state = document.createElement("span")
+    state.className = "state"
+    paintGroupState(state, members)
+    S.groupNodes.push({ el: state, list: members })
+    line.appendChild(state)
+  }
+  return line
+}
+
 function folderMembers(laid, repo, which) {
   const list = []
   if (which !== "exec") {
@@ -3640,12 +3837,35 @@ function folderMembers(laid, repo, which) {
   return list
 }
 
-function renderBoard(task, box) {
+function repoRank(laid, repo) {
+  const list = folderMembers(laid, repo, "repo")
+  if (!list.length) return 2
+  const st = groupState(list)
+  if (st === "running" || st === "running-child") return 0
+  if (st === "waiting") return 1
+  return 2
+}
+
+function orderedRepos(task, laid) {
+  return (boardRepos(task) || [])
+    .map((repo, index) => ({ repo, index, rank: repoRank(laid, repo) }))
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map((row) => row.repo)
+}
+
+function repoActivitySig(task, laid) {
   const repos = boardRepos(task)
+  if (!repos) return ""
+  const placed = laid || arrangeBoard(task)
+  return repos.map((repo) => repoRank(placed, repo)).join(",")
+}
+
+function renderBoard(task, box) {
   const laid = arrangeBoard(task)
+  const repos = orderedRepos(task, laid)
   if (laid.top.length) {
     const key = "tree:" + task.id + ":coord"
-    const open = treeOpen(key, true)
+    const open = treeOpen(key, false)
     const line = document.createElement("div")
     line.className = "tree-line"
     line.appendChild(treeButton("协调", key, open, ""))
@@ -3661,8 +3881,8 @@ function renderBoard(task, box) {
   }
   for (const repo of repos) {
     const repoKey = "tree:" + task.id + ":repo:" + repo.key
-    const repoOpen = treeOpen(repoKey, true)
-    box.appendChild(treeButton(repoTitle(repo), repoKey, repoOpen, "", folderMembers(laid, repo, "repo")))
+    const repoOpen = treeOpen(repoKey, false)
+    box.appendChild(repoBar(task, repo, laid, repoOpen))
     if (!repoOpen) continue
     const body = document.createElement("div")
     body.className = "tree-body"
@@ -3681,7 +3901,7 @@ function renderBoard(task, box) {
       body.appendChild(longBody)
     }
     const execKey = "tree:" + task.id + ":exec:" + repo.key
-    const execOpen = treeOpen(execKey, true)
+    const execOpen = treeOpen(execKey, false)
     body.appendChild(treeButton("执行", execKey, execOpen, "sub", folderMembers(laid, repo, "exec")))
     if (execOpen) {
       const execBody = document.createElement("div")
@@ -3710,8 +3930,117 @@ function renderBoard(task, box) {
       box.appendChild(grid)
     }
   }
+  S.repoActivity = repoActivitySig(task, laid)
 }
 
+  function siblingWorktree(root, name) {
+    const norm = String(root || "").replace(/\\/g, "/").replace(/\/+$/, "");
+    const slash = norm.lastIndexOf("/");
+    if (slash < 0) return "";
+    return norm.slice(0, slash) + "/" + norm.slice(slash + 1) + "--worktrees/" + name;
+  }
+  function boardEntry(repo) {
+    const root = String(repo.path || "").replace(/\\/g, "/");
+    const base = repo.base || "master";
+    const micro = repo.alias === "jonglfow-micro";
+    const slot = (kind, branch, path, purpose, note) => ({
+      kind, branch, path: path || "", note: note || "", purpose
+    });
+    return {
+      key: repo.alias,
+      name: repo.label || repo.alias,
+      root,
+      longLived: [
+        slot("main", base, root, "主检出只读。不在这里改代码，也不切分支。", "主检出只读"),
+        slot("test", "test", siblingWorktree(root, "test"), "长期测试目录。合进 test 只能在这个目录里做。目录还没建时不会自动创建。"),
+        slot("develop", "develop", siblingWorktree(root, "develop"), "长期开发目录。合进 develop 只能在这个目录里做。目录还没建时不会自动创建。"),
+        slot(
+          "release",
+          "release",
+          micro ? "" : siblingWorktree(root, "release"),
+          micro
+            ? "本地建不出 release 检出，因为 refs/heads/release 和已有的 release/* 撞名。合 release 走云效 MR。"
+            : "长期预发目录。合进 release 只能在这个目录里做。目录还没建时不会自动创建。",
+          micro ? "本地建不出：refs/heads/release 与 release/* 冲突。合 release 走云效 MR。" : ""
+        )
+      ],
+      baseline: {
+        branch: "未指定",
+        path: "",
+        note: "这件任务还没有指定基线",
+        purpose: "这件任务的基线还没定。新分支从这里拉，做完合回这里。"
+      },
+      parallels: []
+    };
+  }
+  function repoPicker(task) {
+    const box = document.createElement("div");
+    box.className = "menu repo-pick";
+    const have = new Set((boardRepos(task) || []).map((repo) => repo.key));
+    const rows = (S.catalog || []).filter((repo) => !have.has(repo.alias));
+    if (!rows.length) {
+      const empty = document.createElement("div");
+      empty.className = "tree-note";
+      empty.textContent = S.catalog && S.catalog.length ? t("repoAllIn") : t("noSessions");
+      box.appendChild(empty);
+    }
+    for (const repo of rows) {
+      const line = document.createElement("label");
+      line.className = "repo-choice";
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.checked = S.repoChosen.has(repo.alias);
+      input.onchange = () => {
+        if (input.checked) S.repoChosen.add(repo.alias);
+        else S.repoChosen.delete(repo.alias);
+      };
+      const name = document.createElement("span");
+      name.textContent = repo.label || repo.alias;
+      line.append(input, name);
+      box.appendChild(line);
+    }
+    const actions = document.createElement("div");
+    actions.className = "repo-actions";
+    actions.append(
+      button2(t("repoSave"), "primary", () => void addChosenRepos(task), "只写入这件任务的目录。不建 worktree，不改代码。"),
+      button2(t("cancel"), "", () => {
+        S.repoPick = false;
+        S.repoChosen = /* @__PURE__ */ new Set();
+        void renderDetail();
+      })
+    );
+    box.appendChild(actions);
+    return box;
+  }
+  async function addChosenRepos(task) {
+    const chosen = [...S.repoChosen];
+    if (!chosen.length) {
+      toast(t("repoNeedPick"), "error");
+      return;
+    }
+    if (!task.board || typeof task.board !== "object") task.board = { repos: [] };
+    if (!Array.isArray(task.board.repos)) task.board.repos = [];
+    const have = new Set(task.board.repos.map((repo) => repo.key));
+    let added = 0;
+    for (const alias of chosen) {
+      if (have.has(alias)) continue;
+      const repo = (S.catalog || []).find((item) => item.alias === alias);
+      if (!repo) continue;
+      task.board.repos.push(boardEntry(repo));
+      have.add(alias);
+      added += 1;
+    }
+    if (!added) {
+      toast(t("repoAllIn"), "error");
+      return;
+    }
+    await persist(task);
+    S.repoPick = false;
+    S.repoChosen = /* @__PURE__ */ new Set();
+    S.lastKey = "";
+    toast(t("repoAdded") + " " + added, "success");
+    render();
+  }
   async function renderDetail() {
     const box = el2("detail");
     box.replaceChildren();
@@ -3775,12 +4104,18 @@ function renderBoard(task, box) {
       );
     }
     headActions.append(
+      button2(t("addRepo"), "accent", () => {
+        S.repoPick = !S.repoPick;
+        S.repoChosen = /* @__PURE__ */ new Set();
+        void renderDetail();
+      }, "从仓库名单里加项目。加上就带长期目录：主检出、test、develop、release。不建 worktree，执行基线先空着。"),
       button2(t("addSession"), "accent", () => void openPicker(task), t("hintAdd")),
       moreBtn,
       del
     );
     head.appendChild(headActions);
     box.appendChild(head);
+    if (S.repoPick) box.appendChild(repoPicker(task));
     box.appendChild(phaseBar(task));
     if (S.headMenu) {
       const menu = document.createElement("div");
@@ -3875,7 +4210,6 @@ function renderBoard(task, box) {
       return { key, list, hasCoord, rank };
     });
     entries.sort((a, b) => a.rank - b.rank);
-    if (S.expanded.size === 0 && entries.length === 1) S.expanded.add(entries[0].key);
     for (const entry of entries) {
       const ordered = [...entry.list].sort((a, b) => (b.sessionId === task.coordinator ? 1 : 0) - (a.sessionId === task.coordinator ? 1 : 0));
       box.appendChild(groupHeader(task, entry.key, entry.list, entry.hasCoord));
@@ -4064,7 +4398,7 @@ function renderBoard(task, box) {
       }
       if (boardRepos(task)) {
         const open = executionFoldKeys(task).some((key) => S.expanded.has(key));
-        const fold = button2(open ? t("foldAll") : t("foldOpen"), "", () => toggleExecution(task), "只收起或展开执行目录里的会话。协调和长期不动。");
+        const fold = button2(open ? t("foldAll") : t("foldOpen"), "", () => toggleExecution(task), "收起后每个仓库只留项目名称，长期和执行一起折上。协调不动。");
         fold.classList.add("foldall");
         dirs.appendChild(fold);
       }

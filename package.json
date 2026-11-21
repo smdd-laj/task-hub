@@ -1,9 +1,17 @@
 {
   "name": "task-hub",
-  "version": "1.8.66",
+  "version": "1.9.0",
   "private": true,
   "license": "MIT",
   "description": "One task, many agent sessions, one shared progress folder.",
+  "bin": {
+    "taskhub": "bin/taskhub.mjs"
+  },
+  "scripts": {
+    "build:panel": "esbuild panel/src.js --bundle --format=iife --platform=browser --outfile=panel/main.js",
+    "integrations:install": "node scripts/install-integrations.mjs",
+    "integrations:dry": "node scripts/install-integrations.mjs --dry-run"
+  },
   "openchamber": {
     "apiVersion": 1,
     "engines": {
