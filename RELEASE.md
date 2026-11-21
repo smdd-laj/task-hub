@@ -26,12 +26,12 @@
 
 ## 二、仓库
 
-本地已经是一个 git 仓库，根提交 `5bc9cfb`，9 个文件。还没有远端，也没有 `gh` CLI。
+远端：`https://github.com/smdd-laj/task-hub`，主分支 `main`。本地工作目录 `D:\work\_tools\task-hub`。
 
 ```powershell
 cd D:\work\_tools\task-hub
-git remote add origin <你的仓库地址>
-git push -u origin master
+git fetch origin
+git push origin main
 ```
 
 建仓库时建议：
